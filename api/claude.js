@@ -1,0 +1,67 @@
+import Anthropic from '@anthropic-ai/sdk';
+
+export default async function handler(req, res) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    // Get API key from environment variable (server-side)
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      console.error('ANTHROPIC_API_KEY not configured on server');
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
+    const anthropic = new Anthropic({
+      apiKey: apiKey,
+    });
+
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1000,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+    });
+
+    res.status(200).json({
+      success: true,
+      insight: response.content[0].text
+    });
+
+  } catch (error) {
+    console.error('Claude API error:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: error.status ? `Status: ${error.status}` : undefined
+    });
+  }
+}

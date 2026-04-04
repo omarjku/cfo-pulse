@@ -33,16 +33,22 @@ function App() {
   }, []);
 
   const getClaudeInsight = async () => {
-    if (!import.meta.env.VITE_ANTHROPIC_API_KEY) {
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    console.log('Starting Claude API call with key:', apiKey ? `${apiKey.substring(0, 12)}...` : 'none');
+
+    if (!apiKey) {
       setInsight('Error: API key not configured. Please set VITE_ANTHROPIC_API_KEY environment variable.');
       return;
     }
 
     setLoading(true);
     try {
+      console.log('Creating Anthropic client...');
       const anthropic = new Anthropic({
-        apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
+        apiKey: apiKey,
       });
+
+      console.log('Anthropic client created, making API call...');
 
       const prompt = `As a CFO AI assistant, analyze this financial data and provide insights: ${JSON.stringify(sampleData)}. User query: ${query}`;
 
