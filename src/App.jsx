@@ -11,7 +11,10 @@ function App() {
 
   // Debug: Check if environment variable is available
   useEffect(() => {
-    console.log('VITE_ANTHROPIC_API_KEY exists:', !!import.meta.env.VITE_ANTHROPIC_API_KEY);
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    console.log('VITE_ANTHROPIC_API_KEY exists:', !!apiKey);
+    console.log('VITE_ANTHROPIC_API_KEY length:', apiKey ? apiKey.length : 0);
+    console.log('VITE_ANTHROPIC_API_KEY first chars:', apiKey ? `${apiKey.substring(0, 8)}...` : 'none');
     console.log('import.meta.env keys:', Object.keys(import.meta.env));
   }, []);
 
@@ -44,7 +47,7 @@ function App() {
       const prompt = `As a CFO AI assistant, analyze this financial data and provide insights: ${JSON.stringify(sampleData)}. User query: ${query}`;
 
       const response = await anthropic.messages.create({
-        model: 'claude-3-sonnet-20240229',
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 1000,
         messages: [
           {
@@ -57,7 +60,14 @@ function App() {
       setInsight(response.content[0].text);
     } catch (error) {
       console.error('Error calling Claude API:', error);
-      setInsight('Error fetching insights. Please check your API key and network connection.');
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        status: error.status,
+        statusText: error.statusText,
+        response: error.response
+      });
+      setInsight(`Error fetching insights: ${error.message}. Please check your API key and network connection.`);
     } finally {
       setLoading(false);
     }
