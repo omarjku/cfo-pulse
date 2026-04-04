@@ -9,6 +9,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('Analyze our Q3 revenue trends');
 
+  // Debug: Check if environment variable is available
+  useEffect(() => {
+    console.log('VITE_ANTHROPIC_API_KEY exists:', !!import.meta.env.VITE_ANTHROPIC_API_KEY);
+    console.log('import.meta.env keys:', Object.keys(import.meta.env));
+  }, []);
+
   // Sample financial data
   const sampleData = [
     { month: 'Jan', revenue: 45000, expenses: 32000, profit: 13000 },
