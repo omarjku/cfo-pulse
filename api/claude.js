@@ -46,8 +46,10 @@ export default async function handler(req, res) {
       apiKey: apiKey,
     });
 
+    console.log('Making Claude API call with model: claude-3-sonnet-20240229');
+
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-sonnet-20240229',
       max_tokens: 1000,
       messages: [
         {
@@ -64,11 +66,20 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Claude API error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+      statusText: error.statusText,
+      error: error.error
+    });
 
     res.status(500).json({
       success: false,
       error: error.message,
-      details: error.status ? `Status: ${error.status}` : undefined
+      details: error.status ? `Status: ${error.status}` : undefined,
+      errorType: error.type,
+      anthropicError: error.error
     });
   }
 }
