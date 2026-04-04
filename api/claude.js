@@ -28,12 +28,19 @@ export default async function handler(req, res) {
     }
 
     // Get API key from environment variable (server-side)
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    // Try ANTHROPIC_API_KEY first, then VITE_ANTHROPIC_API_KEY
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
 
     if (!apiKey) {
-      console.error('ANTHROPIC_API_KEY not configured on server');
-      return res.status(500).json({ error: 'Server configuration error' });
+      console.error('API key not configured on server');
+      console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('ANTHROPIC')));
+      return res.status(500).json({
+        error: 'Server configuration error: ANTHROPIC_API_KEY not set',
+        availableEnvVars: Object.keys(process.env).filter(k => k.includes('ANTHROPIC'))
+      });
     }
+
+    console.log('Using API key (first 12 chars):', apiKey.substring(0, 12) + '...');
 
     const anthropic = new Anthropic({
       apiKey: apiKey,

@@ -33,47 +33,44 @@ function App() {
   }, []);
 
   const getClaudeInsight = async () => {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    console.log('Starting Claude API call with key:', apiKey ? `${apiKey.substring(0, 12)}...` : 'none');
-
-    if (!apiKey) {
-      setInsight('Error: API key not configured. Please set VITE_ANTHROPIC_API_KEY environment variable.');
-      return;
-    }
+    console.log('Starting Claude API call via serverless proxy...');
 
     setLoading(true);
     try {
-      console.log('Creating Anthropic client...');
-      const anthropic = new Anthropic({
-        apiKey: apiKey,
-      });
-
-      console.log('Anthropic client created, making API call...');
-
       const prompt = `As a CFO AI assistant, analyze this financial data and provide insights: ${JSON.stringify(sampleData)}. User query: ${query}`;
 
-      const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1000,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
+      console.log('Calling serverless function with prompt:', prompt.substring(0, 100) + '...');
+
+      const response = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt })
       });
 
-      setInsight(response.content[0].text);
+      console.log('API response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Server error: ${response.status} - ${errorData.error || 'Unknown error'}`);
+      }
+
+      const data = await response.json();
+      console.log('API response data:', data);
+
+      if (data.success) {
+        setInsight(data.insight);
+      } else {
+        throw new Error(data.error || 'Unknown error from server');
+      }
     } catch (error) {
       console.error('Error calling Claude API:', error);
       console.error('Error details:', {
         message: error.message,
-        name: error.name,
-        status: error.status,
-        statusText: error.statusText,
-        response: error.response
+        name: error.name
       });
-      setInsight(`Error fetching insights: ${error.message}. Please check your API key and network connection.`);
+      setInsight(`Error fetching insights: ${error.message}. Please check server configuration.`);
     } finally {
       setLoading(false);
     }
