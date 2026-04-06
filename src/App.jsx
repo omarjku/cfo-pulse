@@ -171,11 +171,10 @@ function AlertBanner({ type, message }) {
 }
 
 // ─── Upload Tab ───────────────────────────────────────────────────────────────
-function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, onAnalysisComplete, deepAnalysis, timeframeOverride, setTimeframeOverride }) {
+function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, analysisError, setAnalysisError, onAnalysisComplete, deepAnalysis, timeframeOverride, setTimeframeOverride }) {
   const [dragging, setDragging]   = useState(false);
   const [addingFile, setAddingFile] = useState(false);
-  const [error, setError]         = useState('');
-  const fileRef = useRef();
+  const fileRef = useRef(); const isProcessingRef = useRef(false);
 
   const fmtSize = bytes => bytes < 1024*1024 ? `${(bytes/1024).toFixed(0)} KB` : `${(bytes/1024/1024).toFixed(1)} MB`;
   const EXT_COLORS = { pdf:'#DC2626', xlsx:'#16A34A', xls:'#16A34A', csv:'#2563EB' };
@@ -184,15 +183,15 @@ function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, o
     const ext = file.name.split('.').pop().toLowerCase();
     const isPDF = ext === 'pdf';
     const isSheet = ['xlsx','xls','csv'].includes(ext);
-    if (!isPDF && !isSheet) { setError('Unsupported type. Upload PDF, Excel, or CSV files.'); return; }
-    if (uploadedFiles.some(f => f.name === file.name)) { setError(`"${file.name}" is already uploaded. Remove it first to replace.`); return; }
-    setAddingFile(true); setError('');
+    if (!isPDF && !isSheet) { setAnalysisError('Unsupported type. Upload PDF, Excel, or CSV files.'); return; }
+    if (uploadedFiles.some(f => f.name === file.name)) { setAnalysisError(`"${file.name}" is already uploaded. Remove it first to replace.`); return; }
+    setAddingFile(true); setAnalysisError('');
     try {
       let data, mediaType;
       if (isPDF) { data = await readFileAsBase64(file); mediaType = 'application/pdf'; }
       else { data = await parseSpreadsheetAsText(file); mediaType = 'text/plain'; }
       setUploadedFiles(prev => [...prev, { id:`${Date.now()}_${Math.random()}`, name:file.name, ext, size:file.size, data, mediaType }]);
-    } catch (e) { setError(`Could not read ${file.name}: ${e.message}`); }
+    } catch (e) { setAnalysisError(`Could not read ${file.name}: ${e.message}`); }
     finally { setAddingFile(false); }
   };
 
@@ -202,8 +201,9 @@ function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, o
   const onFileChange = e => { Array.from(e.target.files).forEach(addFile); e.target.value = ''; };
 
   const runAnalysis = async () => {
-    if (!uploadedFiles.length || analyzing) return;
-    setAnalyzing(true); setError('');
+    if (!uploadedFiles.length || analyzing || isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setAnalyzing(true); setAnalysisError('');
     try {
       const pdfFiles = uploadedFiles.filter(f => f.mediaType === 'application/pdf')
         .map(f => ({ data: f.data, mediaType: f.mediaType, name: f.name }));
@@ -226,8 +226,8 @@ function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, o
         result = JSON.parse(m[0]);
       } catch { throw new Error('Could not parse AI response. Please try again.'); }
       onAnalysisComplete(result);
-    } catch (e) { setError(e.message); }
-    finally { setAnalyzing(false); }
+    } catch (e) { setAnalysisError(e.message); }
+    finally { isProcessingRef.current = false; setAnalyzing(false); }
   };
 
   return (
@@ -239,14 +239,26 @@ function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, o
 
       {/* Drop Zone */}
       <div
-        onDragOver={e=>{e.preventDefault();setDragging(true);}}
-        onDragLeave={()=>setDragging(false)}
-        onDrop={onDrop}
-        onClick={()=>!addingFile&&fileRef.current.click()}
-        className="rounded-xl p-8 text-center cursor-pointer transition-all mb-5"
-        style={{background:dragging?'#EFF6FF':SURFACE,border:`2px dashed ${dragging?ACCENT:BORDER}`,boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
+        onDragOver={e=>{if(!analyzing){e.preventDefault();setDragging(true);}}}
+        onDragLeave={()=>!analyzing&&setDragging(false)}
+        onDrop={e=>{if(!analyzing){onDrop(e);}}}
+        onClick={()=>!addingFile&&!analyzing&&fileRef.current.click()}
+        className="rounded-xl p-8 text-center transition-all mb-5"
+        style={{
+          background:analyzing?BG:(dragging?'#EFF6FF':SURFACE),
+          border:`2px dashed ${analyzing?TEXT3:(dragging?ACCENT:BORDER)}`,
+          boxShadow:'0 1px 4px rgba(0,0,0,0.05)',
+          cursor:analyzing?'not-allowed':'pointer',
+          opacity:analyzing?0.7:1
+        }}>
         <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" multiple onChange={onFileChange} style={{display:'none'}}/>
-        {addingFile ? (
+        {analyzing ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{borderColor:`${ACCENT}44`,borderTopColor:ACCENT}}/>
+            <p className="text-sm font-semibold" style={{color:TEXT1}}>Analysing {uploadedFiles.length} document{uploadedFiles.length>1?'s':''}…</p>
+            <p className="text-xs" style={{color:TEXT3}}>Claude is extracting financial data. This may take a moment.</p>
+          </div>
+        ) : addingFile ? (
           <div className="flex flex-col items-center gap-2">
             <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{borderColor:`${ACCENT}44`,borderTopColor:ACCENT}}/>
             <p className="text-sm" style={{color:TEXT2}}>Reading file…</p>
@@ -267,7 +279,7 @@ function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, o
         )}
       </div>
 
-      {error && <AlertBanner type="warning" message={error}/>}
+      {analysisError && <AlertBanner type="warning" message={analysisError}/>}
 
       {/* File List */}
       {uploadedFiles.length > 0 && (
@@ -284,11 +296,16 @@ function UploadTab({ uploadedFiles, setUploadedFiles, analyzing, setAnalyzing, o
                   <p className="text-xs" style={{color:TEXT3}}>{fmtSize(file.size)}</p>
                 </div>
               </div>
-              <button onClick={()=>removeFile(file.id)}
+              <button onClick={()=>!analyzing&&removeFile(file.id)} disabled={analyzing}
                 className="text-xs px-3 py-1.5 rounded-lg transition"
-                style={{color:DANGER,border:`1px solid #FECACA`,background:'#FEF2F2'}}
-                onMouseEnter={e=>{e.currentTarget.style.background=DANGER;e.currentTarget.style.color='#fff';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#FEF2F2';e.currentTarget.style.color=DANGER;}}>
+                style={{
+                  color:analyzing?'#94A3B8':DANGER,
+                  border:`1px solid ${analyzing?'#CBD5E1':'#FECACA'}`,
+                  background:analyzing?'#F1F5F9':'#FEF2F2',
+                  cursor:analyzing?'not-allowed':'pointer'
+                }}
+                onMouseEnter={e=>{if(!analyzing){e.currentTarget.style.background=DANGER;e.currentTarget.style.color='#fff';}}}
+                onMouseLeave={e=>{if(!analyzing){e.currentTarget.style.background='#FEF2F2';e.currentTarget.style.color=DANGER;}}}>
                 Remove
               </button>
             </div>
@@ -784,6 +801,7 @@ Financial Health Score: ${calc.healthScore}/100`;
 export default function App() {
   const [uploadedFiles,     setUploadedFiles]     = useState([]);
   const [analyzing,         setAnalyzing]         = useState(false);
+  const [analysisError,     setAnalysisError]     = useState('');
   const [deepAnalysis,      setDeepAnalysis]      = useState(null);
   const [timeframeOverride, setTimeframeOverride] = useState('Annual');
   const [activeTab,         setActiveTab]         = useState('upload');
@@ -853,6 +871,7 @@ export default function App() {
 
   const clearAnalysis = () => {
     setDeepAnalysis(null);
+    setAnalysisError('');
     setActiveTab('upload');
     try { localStorage.removeItem('cfopulse_v2'); } catch {}
   };
@@ -941,7 +960,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div style={{width:6,height:6,borderRadius:'50%',background:ACCENT}}/>
-              <h1 className="text-lg font-extrabold tracking-tight" style={{color:'#F1F5F9'}}>CFO Pulse</h1>
+              <h1 className="text-lg font-extrabold tracking-tight" style={{color:'#F1F5F9'}}>CFO Pulse</h1>{analyzing && (<span className="ml-2 w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin inline-block"/>)}
             </div>
             {company.name && (
               <div className="hidden sm:flex items-center gap-2">
@@ -955,28 +974,33 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             {deepAnalysis && (
-              <button onClick={clearAnalysis}
+              <button onClick={clearAnalysis} disabled={analyzing}
                 className="flex items-center gap-1.5 text-xs font-medium transition"
-                style={{color:'#64748B',border:`1px solid #1E293B`,borderRadius:8,padding:'5px 12px',background:'transparent'}}
-                onMouseEnter={e=>{e.currentTarget.style.color='#94A3B8';e.currentTarget.style.borderColor='#334155';}}
-                onMouseLeave={e=>{e.currentTarget.style.color='#64748B';e.currentTarget.style.borderColor='#1E293B';}}>
+                style={{color:analyzing?'#475569':'#64748B',border:`1px solid ${analyzing?'#334155':'#1E293B'}`,borderRadius:8,padding:'5px 12px',background:'transparent',cursor:analyzing?'not-allowed':'pointer'}}
+                onMouseEnter={e=>{if(!analyzing){e.currentTarget.style.color='#94A3B8';e.currentTarget.style.borderColor='#334155';}}}
+                onMouseLeave={e=>{if(!analyzing){e.currentTarget.style.color='#64748B';e.currentTarget.style.borderColor='#1E293B';}}}>
                 New Analysis
               </button>
             )}
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4 flex" style={{borderTop:`1px solid #1A2B3C`}}>
-          {tabs.map(t=>(
-            <button key={t.key} onClick={()=>setActiveTab(t.key)} className="px-5 py-2.5 text-sm font-medium transition"
-              style={{borderBottom:`2px solid ${activeTab===t.key?ACCENT:'transparent'}`,color:activeTab===t.key?'#E2E8F0':'#475569',marginBottom:-1,background:'transparent',cursor:'pointer'}}
-              onMouseEnter={e=>{if(activeTab!==t.key)e.target.style.color='#94A3B8';}}
-              onMouseLeave={e=>{if(activeTab!==t.key)e.target.style.color='#475569';}}>
-              {t.label}
-              {t.key==='upload' && uploadedFiles.length > 0 && (
-                <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{background:ACCENT,color:'#fff'}}>{uploadedFiles.length}</span>
-              )}
-            </button>
-          ))}
+          {tabs.map(t=>{
+            const isActive = activeTab === t.key;
+            const color = analyzing && !isActive ? '#64748B' : (isActive ? '#E2E8F0' : '#475569');
+            const cursor = analyzing ? 'not-allowed' : 'pointer';
+            return (
+              <button key={t.key} onClick={()=>setActiveTab(t.key)} disabled={analyzing} className="px-5 py-2.5 text-sm font-medium transition"
+                style={{borderBottom:`2px solid ${isActive?ACCENT:'transparent'}`,color,marginBottom:-1,background:'transparent',cursor}}
+                onMouseEnter={e=>{if(!analyzing && !isActive) e.target.style.color='#94A3B8';}}
+                onMouseLeave={e=>{if(!analyzing && !isActive) e.target.style.color=color;}}>
+                {t.label}
+                {t.key==='upload' && uploadedFiles.length > 0 && (
+                  <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{background:ACCENT,color:'#fff'}}>{uploadedFiles.length}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </header>
 
@@ -987,6 +1011,8 @@ export default function App() {
             setUploadedFiles={setUploadedFiles}
             analyzing={analyzing}
             setAnalyzing={setAnalyzing}
+            analysisError={analysisError}
+            setAnalysisError={setAnalysisError}
             onAnalysisComplete={handleAnalysisComplete}
             deepAnalysis={deepAnalysis}
             timeframeOverride={timeframeOverride}
