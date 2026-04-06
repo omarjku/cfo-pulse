@@ -34,30 +34,62 @@ export default async function handler(req, res) {
     if (!apiKey) {
       console.error('API key not configured on server');
       console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('ANTHROPIC')));
+      console.error('All env vars (first 20):', Object.keys(process.env).slice(0, 20));
       return res.status(500).json({
         error: 'Server configuration error: ANTHROPIC_API_KEY not set',
         availableEnvVars: Object.keys(process.env).filter(k => k.includes('ANTHROPIC'))
       });
     }
 
-    console.log('Using API key (first 12 chars):', apiKey.substring(0, 12) + '...');
+    console.log('Using API key (first 8 chars):', apiKey.substring(0, 8) + '...');
+    console.log('API key length:', apiKey.length);
+    console.log('API key starts with sk-ant?:', apiKey.startsWith('sk-ant'));
 
     const anthropic = new Anthropic({
       apiKey: apiKey,
     });
 
-    console.log('Making Claude API call with model: claude-3-sonnet-20240229');
+    console.log('Making Claude API call, trying different models...');
 
-    const response = await anthropic.messages.create({
-      model: 'claude-3-sonnet-20240229',
-      max_tokens: 1000,
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
-    });
+    // Try different models in order of availability
+    const modelsToTry = [
+      'claude-haiku-4-5-20251001',    // Latest Haiku - fast and affordable
+      'claude-3-5-haiku-20241022',    // Claude 3.5 Haiku
+      'claude-3-haiku-20240307',      // Claude 3 Haiku fallback
+    ];
+
+    let lastError;
+
+    for (const model of modelsToTry) {
+      try {
+        console.log(`Trying model: ${model}`);
+        const response = await anthropic.messages.create({
+          model: model,
+          max_tokens: 1000,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ]
+        });
+
+        console.log(`Success with model: ${model}`);
+        return res.status(200).json({
+          success: true,
+          insight: response.content[0].text,
+          modelUsed: model
+        });
+      } catch (error) {
+        console.log(`Model ${model} failed:`, error.message);
+        lastError = error;
+        continue; // Try next model
+      }
+    }
+
+    // If we get here, all models failed
+    console.error('All models failed, last error:', lastError);
+    throw lastError;
 
     res.status(200).json({
       success: true,
