@@ -51,10 +51,11 @@ export default async function handler(req, res) {
 
     console.log('Making Claude API call, trying different models...');
 
-    // Try different models in order of availability
+    // Try different models in order of preference
     const modelsToTry = [
       'claude-haiku-4-5-20251001',    // Latest Haiku - fast and affordable
       'claude-3-5-haiku-20241022',    // Claude 3.5 Haiku
+      'claude-3-5-sonnet-20241022',   // Claude 3.5 Sonnet fallback
       'claude-3-haiku-20240307',      // Claude 3 Haiku fallback
     ];
 
