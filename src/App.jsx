@@ -41,163 +41,54 @@ const pct = v => (v == null || isNaN(v)) ? '—' : `${(v*100).toFixed(1)}%`;
 const N = v => parseFloat(v) || 0;
 const safeDiv = (a, b) => (b != null && b !== 0) ? a / b : null;
 
-// ─── Excel Field Aliases ──────────────────────────────────────────────────────
-const FIELD_ALIASES = {
-  'income.revenue':         ['revenue','sales','net sales','total revenue','net revenue','total sales','turnover'],
-  'income.cogs':            ['cost of goods sold','cost of goods sold (cogs)','cogs','cost of sales','cost of revenue','direct costs'],
-  'income.opex':            ['operating expenses','operating expenses (opex)','opex','total operating expenses','sg&a','overheads'],
-  'income.da':              ['depreciation & amortisation','depreciation & amortization','depreciation and amortisation','d&a','depreciation','amortisation','amortization'],
-  'income.interest':        ['interest expense','interest','finance costs','finance charges','interest charges'],
-  'income.tax':             ['income tax','tax','income taxes','tax expense','income tax expense','corporation tax'],
-  'balance.cash':           ['cash & equivalents','cash and equivalents','cash & cash equivalents','cash and cash equivalents','cash','cash position'],
-  'balance.receivables':    ['accounts receivable','trade receivables','receivables','debtors','trade debtors','net receivables'],
-  'balance.inventory':      ['inventory','inventories','stock'],
-  'balance.otherCurrent':   ['other current assets','prepaid expenses','prepayments'],
-  'balance.ppe':            ["pp&e (net)","property, plant & equipment","property plant and equipment","net ppe","fixed assets (net)","tangible fixed assets"],
-  'balance.otherLongTerm':  ['other long-term assets','other non-current assets','intangible assets','goodwill'],
-  'balance.payables':       ['accounts payable','trade payables','payables','creditors','trade creditors'],
-  'balance.shortTermDebt':  ['short-term debt','short term debt','current borrowings','notes payable','bank overdraft'],
-  'balance.otherCurrentLiab':['other current liabilities','accrued liabilities','accrued expenses','deferred revenue'],
-  'balance.longTermDebt':   ['long-term debt','long term debt','non-current borrowings','long-term borrowings','bonds payable'],
-  'balance.equity':         ["shareholders' equity","shareholders equity","stockholders equity","total equity","equity","net assets"],
-  'cashflow.operating':     ['operating cash flow','cash from operations','net cash from operating activities','operating activities'],
-  'cashflow.investing':     ['investing cash flow','cash from investing','net cash from investing activities','investing activities'],
-  'cashflow.financing':     ['financing cash flow','cash from financing','net cash from financing activities','financing activities'],
-  'prior.revenue':          ['prior period revenue','prior revenue','previous period revenue','previous year revenue'],
-  'prior.cash':             ['prior period cash','prior cash','previous period cash','previous year cash'],
-  'prior.ebitda':           ['prior period ebitda','prior ebitda','previous period ebitda','previous year ebitda'],
-  'company.name':           ['company name','company','entity name','business name'],
-  'company.industry':       ['industry','sector','business sector'],
-  'company.currency':       ['currency','reporting currency','functional currency'],
-  'company.period':         ['reporting period','period','fiscal period'],
-  'company.year':           ['year','fiscal year','financial year'],
-};
-
-const FIELD_MAP = {};
-for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
-  for (const alias of aliases) FIELD_MAP[alias] = field;
+// ─── File Helpers ─────────────────────────────────────────────────────────────
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
-// ─── Excel Template Download ──────────────────────────────────────────────────
-function downloadTemplate() {
-  const rows = [
-    ['CFO Pulse Financial Data Template', '', ''],
-    ['Fill in column B. Fields marked REQUIRED must have a value.', '', ''],
-    ['Save the file, then upload it to CFO Pulse.', '', ''],
-    ['', '', ''],
-    ['--- COMPANY INFORMATION ---', '', ''],
-    ['Company Name', '', 'REQUIRED'],
-    ['Industry', 'Technology', 'Retail / Technology / Manufacturing / Healthcare / Financial Services / Real Estate / Hospitality / Construction / Education / Professional Services / Other'],
-    ['Currency', 'USD', 'USD / EGP / AED / SAR / EUR / GBP'],
-    ['Reporting Period', 'Annual', 'Annual / Semi-Annual / Quarterly'],
-    ['Year', String(new Date().getFullYear()), ''],
-    ['', '', ''],
-    ['--- INCOME STATEMENT ---', '', ''],
-    ['Revenue', '', 'REQUIRED'],
-    ['Cost of Goods Sold (COGS)', '', 'REQUIRED'],
-    ['Operating Expenses (OPEX)', '', 'REQUIRED'],
-    ['Depreciation & Amortisation', '', 'optional'],
-    ['Interest Expense', '', 'optional'],
-    ['Income Tax', '', 'optional'],
-    ['', '', ''],
-    ['--- BALANCE SHEET ---', '', ''],
-    ['Cash & Equivalents', '', 'REQUIRED'],
-    ['Accounts Receivable', '', 'REQUIRED'],
-    ['Inventory', '', 'optional'],
-    ['Other Current Assets', '', 'optional'],
-    ['PP&E (Net)', '', 'optional'],
-    ['Other Long-Term Assets', '', 'optional'],
-    ['Accounts Payable', '', 'REQUIRED'],
-    ['Short-Term Debt', '', 'optional'],
-    ['Other Current Liabilities', '', 'optional'],
-    ['Long-Term Debt', '', 'optional'],
-    ["Shareholders' Equity", '', 'REQUIRED'],
-    ['', '', ''],
-    ['--- CASH FLOW STATEMENT (OPTIONAL) ---', '', ''],
-    ['Operating Cash Flow', '', 'optional — auto-estimated if blank'],
-    ['Investing Cash Flow', '', 'optional'],
-    ['Financing Cash Flow', '', 'optional'],
-    ['', '', ''],
-    ['--- PRIOR PERIOD (OPTIONAL) ---', '', ''],
-    ['Prior Period Revenue', '', 'optional — enables YoY analysis'],
-    ['Prior Period Cash', '', 'optional'],
-    ['Prior Period EBITDA', '', 'optional'],
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ width: 42 }, { width: 22 }, { width: 55 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Financial Data');
-  XLSX.writeFile(wb, 'CFO_Pulse_Template.xlsx');
-}
-
-// ─── Excel Parsing ────────────────────────────────────────────────────────────
-function parseNumericValue(raw) {
-  if (typeof raw === 'number') return Math.abs(raw); // abs for expense lines shown negative
-  if (!raw) return '';
-  const s = String(raw).replace(/[$£€,\s]/g, '').replace(/\((.+)\)/, '-$1');
-  const n = parseFloat(s);
-  return isNaN(n) ? '' : String(Math.abs(n)); // store positives; calculations handle signs
-}
-
-function parseExcelFile(file) {
+function parseSpreadsheetAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'binary' });
-        const wsName = wb.SheetNames[0];
-        const ws = wb.Sheets[wsName];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-        const result = {
-          company:  { name: '', industry: 'Technology', currency: 'USD', period: 'Annual', year: String(new Date().getFullYear()) },
-          income:   { revenue: '', cogs: '', opex: '', da: '', interest: '', tax: '' },
-          balance:  { cash: '', receivables: '', inventory: '', otherCurrent: '', ppe: '', otherLongTerm: '', payables: '', shortTermDebt: '', otherCurrentLiab: '', longTermDebt: '', equity: '' },
-          cashFlow: { operating: '', investing: '', financing: '' },
-          prior:    { revenue: '', cash: '', ebitda: '' },
-        };
-
-        let matched = 0;
-        for (const row of rows) {
-          if (!row || row.length < 2) continue;
-          const rawLabel = String(row[0] ?? '').trim();
-          const rawVal   = row[1];
-          if (!rawLabel || rawVal === '' || rawVal === null || rawVal === undefined) continue;
-          // Normalise: lowercase, strip asterisks / "(REQUIRED)" / "(optional)"
-          const label = rawLabel.toLowerCase()
-            .replace(/\s*\*+\s*$/, '').replace(/\(required\)/i, '').replace(/\(optional\)/i, '').trim();
-          // Skip section headers
-          if (label.startsWith('---') || label.startsWith('cfo pulse') || label.startsWith('fill in') || label.startsWith('save')) continue;
-
-          const fieldPath = FIELD_MAP[label];
-          if (!fieldPath) continue;
-
-          const [section, field] = fieldPath.split('.');
-          const sectionObj = section === 'cashflow' ? result.cashFlow : result[section];
-          if (!sectionObj || !(field in sectionObj)) continue;
-
-          if (section === 'company') {
-            sectionObj[field] = String(rawVal).trim();
-          } else {
-            const num = parseNumericValue(rawVal);
-            if (num !== '') { sectionObj[field] = num; matched++; }
+        let text = '';
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          text += `Sheet: ${sheetName}\n`;
+          for (const row of rows.slice(0, 500)) {
+            if (row.some(cell => cell !== '')) {
+              text += row.map(c => String(c ?? '')).join('\t') + '\n';
+            }
           }
+          text += '\n';
         }
-
-        if (matched < 2) {
-          resolve({ ok: false, error: 'Could not read financial data from this file. Please use the CFO Pulse template.' });
-        } else {
-          resolve({ ok: true, company: result.company, income: result.income, balance: result.balance, cashFlow: result.cashFlow, prior: result.prior, matched });
-        }
-      } catch (err) {
-        reject(err);
-      }
+        resolve(text.slice(0, 20000));
+      } catch (err) { reject(err); }
     };
     reader.onerror = reject;
     reader.readAsBinaryString(file);
   });
 }
+
+// ─── AI Extraction Prompt ─────────────────────────────────────────────────────
+const EXTRACTION_PROMPT = `You are a financial data extraction specialist. Analyze the provided financial document carefully. The document may be a bank account statement, journal report, transaction list, ledger, or any financial record.
+
+For JOURNAL REPORTS: Revenue = total credits to income/sales/revenue accounts. COGS = total debits to cost-of-goods accounts. OPEX = total debits to all operating expense accounts (rent, salaries, utilities, admin, marketing, etc.). Cash = net ending balance of cash/bank accounts. Receivables = net debit balance in accounts receivable. Payables = net credit balance in accounts payable.
+
+For BANK STATEMENTS: Revenue = sum of all credits/deposits. OPEX = sum of all debits/withdrawals (excluding loan repayments). Cash = final/ending balance shown.
+
+Return ONLY a valid JSON object with no other text before or after it:
+
+{"company":{"name":"Unknown","industry":"Other","currency":"USD","period":"Annual","year":"2024"},"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"summary":"2-3 sentence executive summary of financial health based on this data.","notes":"What data was available and any key assumptions made."}
+
+All monetary values must be positive numbers. Use 0 for fields that cannot be determined.`;
 
 // ─── MarkdownText ─────────────────────────────────────────────────────────────
 function InlineText({ text }) {
@@ -269,13 +160,11 @@ function AlertBanner({ type, message }) {
 }
 
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
-function AuthScreen({ onAuthenticated }) {
-  const [step, setStep]       = useState('email'); // 'email' | 'code'
+function AuthScreen() {
   const [email, setEmail]     = useState('');
-  const [code, setCode]       = useState('');
+  const [sent, setSent]       = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
-  const [info, setInfo]       = useState('');
 
   const inputStyle = {
     width:'100%', border:`1.5px solid ${BORDER}`, borderRadius:10,
@@ -284,35 +173,24 @@ function AuthScreen({ onAuthenticated }) {
     transition:'border-color 0.15s',
   };
 
-  const sendCode = async () => {
+  const sendLink = async () => {
     if (!email.trim()) { setError('Please enter your email address.'); return; }
-    setLoading(true); setError(''); setInfo('');
-    try {
-      const { error: err } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
-      if (err) throw err;
-      setStep('code');
-      setInfo('A sign-in code has been sent to your email. Enter it below.');
-    } catch (e) {
-      setError(e.message || 'Failed to send code. Please try again.');
-    } finally { setLoading(false); }
-  };
-
-  const verifyCode = async () => {
-    if (!code.trim()) { setError('Please enter the code from your email.'); return; }
     setLoading(true); setError('');
     try {
-      const { data, error: err } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
+      const { error: err } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { shouldCreateUser: true, emailRedirectTo: window.location.origin },
+      });
       if (err) throw err;
-      onAuthenticated(data.session);
+      setSent(true);
     } catch (e) {
-      setError(e.message || 'Invalid code. Please check and try again.');
+      setError(e.message || 'Failed to send link. Please try again.');
     } finally { setLoading(false); }
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{background:BG}}>
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-10">
           <div className="flex items-center justify-center gap-2.5 mb-2">
             <div style={{width:8,height:8,borderRadius:'50%',background:ACCENT}}/>
@@ -322,24 +200,24 @@ function AuthScreen({ onAuthenticated }) {
         </div>
 
         <div className="rounded-2xl p-8" style={{background:SURFACE,boxShadow:'0 4px 24px rgba(12,25,41,0.09)',border:`1px solid ${BORDER}`}}>
-          {step === 'email' ? (
+          {!sent ? (
             <>
               <h2 className="text-lg font-bold mb-1" style={{color:TEXT1}}>Sign in to your account</h2>
-              <p className="text-sm mb-6" style={{color:TEXT2}}>Enter your work email. We will send you a one-time sign-in code. No password required.</p>
+              <p className="text-sm mb-6" style={{color:TEXT2}}>Enter your work email. We will send you a secure sign-in link. No password required.</p>
               <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{color:TEXT2}}>Email Address</label>
               <input
                 type="email" value={email} onChange={e=>{setEmail(e.target.value);setError('');}}
-                onKeyDown={e=>e.key==='Enter'&&sendCode()}
+                onKeyDown={e=>e.key==='Enter'&&sendLink()}
                 placeholder="you@company.com"
                 style={inputStyle}
                 onFocus={e=>e.target.style.borderColor=ACCENT}
                 onBlur={e=>e.target.style.borderColor=BORDER}
               />
               {error && <p className="text-xs mt-2" style={{color:DANGER}}>{error}</p>}
-              <button onClick={sendCode} disabled={loading}
+              <button onClick={sendLink} disabled={loading}
                 className="w-full mt-5 py-3 rounded-xl text-white font-semibold text-sm transition"
                 style={{background:loading?ACCENT2:ACCENT,cursor:loading?'not-allowed':'pointer'}}>
-                {loading ? 'Sending…' : 'Send Sign-in Code'}
+                {loading ? 'Sending…' : 'Send Sign-in Link'}
               </button>
               <p className="text-center text-xs mt-5" style={{color:TEXT3}}>
                 New to CFO Pulse? Entering your email automatically creates an account.
@@ -347,26 +225,20 @@ function AuthScreen({ onAuthenticated }) {
             </>
           ) : (
             <>
-              <h2 className="text-lg font-bold mb-1" style={{color:TEXT1}}>Enter your sign-in code</h2>
-              <p className="text-sm mb-1" style={{color:TEXT2}}>A 6-digit code was sent to</p>
-              <p className="text-sm font-semibold mb-5" style={{color:ACCENT}}>{email}</p>
-              {info && <div className="rounded-lg p-3 mb-4 text-xs" style={{background:'#EFF6FF',border:`1px solid #BFDBFE`,color:ACCENT2}}>{info}</div>}
-              <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{color:TEXT2}}>Confirmation Code</label>
-              <input
-                type="text" value={code} onChange={e=>{setCode(e.target.value.replace(/\D/g,'').slice(0,6));setError('');}}
-                onKeyDown={e=>e.key==='Enter'&&verifyCode()}
-                placeholder="000000" maxLength={6}
-                style={{...inputStyle,fontSize:24,letterSpacing:'0.3em',textAlign:'center',fontWeight:700}}
-                onFocus={e=>e.target.style.borderColor=ACCENT}
-                onBlur={e=>e.target.style.borderColor=BORDER}
-              />
-              {error && <p className="text-xs mt-2" style={{color:DANGER}}>{error}</p>}
-              <button onClick={verifyCode} disabled={loading||code.length<4}
-                className="w-full mt-5 py-3 rounded-xl text-white font-semibold text-sm transition"
-                style={{background:loading||code.length<4?ACCENT2:ACCENT,cursor:loading||code.length<4?'not-allowed':'pointer'}}>
-                {loading ? 'Verifying…' : 'Confirm & Sign In'}
-              </button>
-              <button onClick={()=>{setStep('email');setCode('');setError('');}} className="w-full mt-3 py-2 text-sm" style={{color:TEXT3,background:'none',border:'none',cursor:'pointer'}}>
+              <div className="text-center">
+                <div className="w-14 h-14 rounded-full mx-auto mb-4 flex items-center justify-center" style={{background:'#EFF6FF'}}>
+                  <svg className="w-7 h-7" style={{color:ACCENT}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold mb-1" style={{color:TEXT1}}>Check your inbox</h2>
+                <p className="text-sm" style={{color:TEXT2}}>A sign-in link has been sent to</p>
+                <p className="text-sm font-semibold mt-1" style={{color:ACCENT}}>{email}</p>
+              </div>
+              <div className="rounded-lg p-3 mt-5" style={{background:'#F0FDF4',border:`1px solid #BBF7D0`}}>
+                <p className="text-xs" style={{color:'#166534'}}>Click the link in the email to sign in automatically. Keep this tab open — you will be redirected here once authenticated.</p>
+              </div>
+              <button onClick={()=>{setSent(false);setEmail('');setError('');}} className="w-full mt-4 py-2 text-sm" style={{color:TEXT3,background:'none',border:'none',cursor:'pointer'}}>
                 Use a different email
               </button>
             </>
@@ -379,10 +251,12 @@ function AuthScreen({ onAuthenticated }) {
 
 // ─── Upload Screen ────────────────────────────────────────────────────────────
 function UploadScreen({ onDataReady, userEmail, onSignOut }) {
-  const [dragging, setDragging]   = useState(false);
-  const [parsing, setParsing]     = useState(false);
-  const [parseResult, setParseResult] = useState(null); // { ok, company, income, balance, cashFlow, prior, matched, error }
-  const [fileName, setFileName]   = useState('');
+  const [dragging, setDragging]     = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [fileName, setFileName]     = useState('');
+  const [extracted, setExtracted]   = useState(null);
+  const [error, setError]           = useState('');
+  const [company, setCompany]       = useState({ name:'', industry:'Other', currency:'USD', period:'Annual', year:String(new Date().getFullYear()) });
   const fileRef = useRef();
 
   const selectStyle = {
@@ -394,63 +268,80 @@ function UploadScreen({ onDataReady, userEmail, onSignOut }) {
   const handleFile = async (file) => {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
-    if (!['xlsx','xls','csv'].includes(ext)) {
-      setParseResult({ ok:false, error:'Unsupported file type. Please upload an .xlsx, .xls, or .csv file.' });
+    const isPDF = ext === 'pdf';
+    const isSpreadsheet = ['xlsx','xls','csv'].includes(ext);
+    if (!isPDF && !isSpreadsheet) {
+      setError('Please upload a PDF bank statement or an Excel/CSV transaction file.');
       return;
     }
     setFileName(file.name);
-    setParsing(true);
-    setParseResult(null);
+    setProcessing(true);
+    setError('');
+    setExtracted(null);
     try {
-      const result = await parseExcelFile(file);
-      setParseResult(result);
+      let requestBody;
+      if (isPDF) {
+        const base64 = await readFileAsBase64(file);
+        requestBody = { prompt: EXTRACTION_PROMPT, fileData: base64, fileMediaType: 'application/pdf' };
+      } else {
+        const textContent = await parseSpreadsheetAsText(file);
+        requestBody = { prompt: `${EXTRACTION_PROMPT}\n\nFinancial data to analyze:\n\n${textContent}` };
+      }
+      const apiUrl = import.meta.env.VITE_API_ENDPOINT || '/api/claude';
+      const resp = await fetch(apiUrl, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(requestBody) });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Analysis failed');
+      let parsed;
+      try {
+        const jsonMatch = data.insight.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('no json');
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new Error('Could not parse financial data from the AI response. Please try a different file or format.');
+      }
+      setExtracted(parsed);
+      setCompany(prev => ({
+        ...prev,
+        name: parsed.company?.name && parsed.company.name !== 'Unknown' ? parsed.company.name : prev.name,
+        industry: INDUSTRIES.includes(parsed.company?.industry) ? parsed.company.industry : prev.industry,
+        currency: CURRENCIES.includes(parsed.company?.currency) ? parsed.company.currency : prev.currency,
+        period: PERIODS.includes(parsed.company?.period) ? parsed.company.period : prev.period,
+        year: parsed.company?.year || prev.year,
+      }));
     } catch (e) {
-      setParseResult({ ok:false, error:'Could not read the file. Please check it is a valid Excel or CSV file.' });
-    } finally { setParsing(false); }
+      setError(e.message);
+    } finally { setProcessing(false); }
   };
 
-  const onDrop = (e) => {
-    e.preventDefault(); setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
+  const onDrop = (e) => { e.preventDefault(); setDragging(false); const f=e.dataTransfer.files[0]; if(f) handleFile(f); };
+  const onFileChange = (e) => { if(e.target.files[0]) handleFile(e.target.files[0]); };
 
-  const onFileChange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+  const sym = SYMS[company.currency] || '$';
+  const canGenerate = extracted && (
+    (extracted.income?.revenue||0) > 0 ||
+    (extracted.balance?.cash||0)   > 0 ||
+    (extracted.income?.opex||0)    > 0 ||
+    (extracted.income?.cogs||0)    > 0
+  );
 
-  const setField = (section, key, val) => {
-    setParseResult(prev => ({
-      ...prev,
-      [section]: { ...prev[section], [key]: val },
-    }));
-  };
-
-  const requiredOk = parseResult?.ok &&
-    parseResult.income?.revenue && parseResult.income?.cogs && parseResult.income?.opex &&
-    parseResult.balance?.cash && parseResult.balance?.receivables &&
-    parseResult.balance?.payables && parseResult.balance?.equity &&
-    parseResult.company?.name;
-
-  const CompanyField = ({ label, stateKey, type='text', options }) => (
+  const CompanyField = ({ label, stateKey, options }) => (
     <div>
       <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{color:TEXT2}}>{label}</label>
       {options ? (
-        <select value={parseResult.company[stateKey]||''} onChange={e=>setField('company',stateKey,e.target.value)} style={selectStyle}>
+        <select value={company[stateKey]} onChange={e=>setCompany(p=>({...p,[stateKey]:e.target.value}))} style={selectStyle}>
           {options.map(o=><option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
-        <input type={type} value={parseResult.company[stateKey]||''}
-          onChange={e=>setField('company',stateKey,e.target.value)}
+        <input type="text" value={company[stateKey]} onChange={e=>setCompany(p=>({...p,[stateKey]:e.target.value}))}
           style={selectStyle}
           onFocus={e=>e.target.style.borderColor=ACCENT}
-          onBlur={e=>e.target.style.borderColor=BORDER}
-        />
+          onBlur={e=>e.target.style.borderColor=BORDER}/>
       )}
     </div>
   );
 
   return (
     <div className="min-h-screen flex flex-col" style={{background:BG}}>
-      {/* Header */}
       <header style={{background:NAVY,borderBottom:`1px solid ${NAVY2}`}}>
         <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -474,25 +365,7 @@ function UploadScreen({ onDataReady, userEmail, onSignOut }) {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-10">
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-1" style={{color:TEXT1}}>Upload Financial Data</h2>
-          <p className="text-sm" style={{color:TEXT2}}>Upload your financial statements to generate an AI-powered CFO dashboard.</p>
-        </div>
-
-        {/* Template Download Banner */}
-        <div className="rounded-xl p-5 mb-6 flex items-center justify-between gap-4" style={{background:SURFACE,border:`1px solid ${BORDER}`,boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
-          <div>
-            <p className="text-sm font-semibold mb-0.5" style={{color:TEXT1}}>Use the CFO Pulse Template for best results</p>
-            <p className="text-xs" style={{color:TEXT2}}>Pre-formatted Excel file that maps directly to all analysis fields. Also accepts standard accounting software exports.</p>
-          </div>
-          <button onClick={downloadTemplate}
-            className="flex-shrink-0 flex items-center gap-2 py-2.5 px-5 rounded-lg text-white text-sm font-semibold transition"
-            style={{background:ACCENT,whiteSpace:'nowrap'}}
-            onMouseEnter={e=>e.currentTarget.style.background=ACCENT2}
-            onMouseLeave={e=>e.currentTarget.style.background=ACCENT}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-            Download Template
-          </button>
+          <p className="text-sm" style={{color:TEXT2}}>Upload your bank statement or accounting export. AI will extract and analyse the financial data automatically — no template required.</p>
         </div>
 
         {/* Upload Zone */}
@@ -500,55 +373,81 @@ function UploadScreen({ onDataReady, userEmail, onSignOut }) {
           onDragOver={e=>{e.preventDefault();setDragging(true);}}
           onDragLeave={()=>setDragging(false)}
           onDrop={onDrop}
-          onClick={()=>!parsing&&fileRef.current.click()}
+          onClick={()=>!processing&&fileRef.current.click()}
           className="rounded-xl p-10 text-center cursor-pointer transition-all mb-6"
-          style={{
-            background:dragging?'#EFF6FF':SURFACE,
-            border:`2px dashed ${dragging?ACCENT:BORDER}`,
-            boxShadow:'0 1px 4px rgba(0,0,0,0.05)',
-          }}>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onFileChange} style={{display:'none'}}/>
-          {parsing ? (
+          style={{background:dragging?'#EFF6FF':SURFACE,border:`2px dashed ${dragging?ACCENT:BORDER}`,boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
+          <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={onFileChange} style={{display:'none'}}/>
+          {processing ? (
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin" style={{borderColor:`${ACCENT}44`,borderTopColor:ACCENT}}/>
-              <p className="text-sm font-medium" style={{color:TEXT2}}>Reading {fileName}…</p>
+              <p className="text-sm font-medium" style={{color:TEXT2}}>Analysing {fileName} with AI…</p>
+              <p className="text-xs" style={{color:TEXT3}}>Extracting financial data from your document</p>
             </div>
           ) : (
             <>
-              <svg className="w-10 h-10 mx-auto mb-3" style={{color:parseResult?.ok?SUCCESS:TEXT3}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {parseResult?.ok
+              <svg className="w-10 h-10 mx-auto mb-3" style={{color:extracted?SUCCESS:TEXT3}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {extracted
                   ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                 }
               </svg>
-              {parseResult?.ok ? (
+              {extracted ? (
                 <>
-                  <p className="text-sm font-semibold" style={{color:SUCCESS}}>{fileName} — {parseResult.matched} fields detected</p>
-                  <p className="text-xs mt-1" style={{color:TEXT3}}>Click or drag to replace with a different file</p>
+                  <p className="text-sm font-semibold" style={{color:SUCCESS}}>{fileName} — analysis complete</p>
+                  <p className="text-xs mt-1" style={{color:TEXT3}}>Click or drag to upload a different file</p>
                 </>
               ) : (
                 <>
-                  <p className="text-sm font-semibold mb-1" style={{color:TEXT1}}>Drag and drop your file here, or click to browse</p>
-                  <p className="text-xs" style={{color:TEXT3}}>Accepts .xlsx, .xls, and .csv — QuickBooks, Xero, Wave, and standard accounting exports supported</p>
+                  <p className="text-sm font-semibold mb-1" style={{color:TEXT1}}>Drop your file here, or click to browse</p>
+                  <p className="text-xs mb-3" style={{color:TEXT3}}>PDF bank statements, Excel journal reports, CSV transaction files — any raw export from your bank or accounting software</p>
+                  <div className="flex items-center justify-center gap-3">
+                    {['PDF','XLSX','XLS','CSV'].map(t=>(
+                      <span key={t} className="text-xs px-2 py-1 rounded" style={{background:BG,border:`1px solid ${BORDER}`,color:TEXT3,fontWeight:600}}>{t}</span>
+                    ))}
+                  </div>
                 </>
               )}
             </>
           )}
         </div>
 
-        {/* Parse Error */}
-        {parseResult && !parseResult.ok && (
-          <AlertBanner type="warning" message={parseResult.error}/>
-        )}
+        {error && <AlertBanner type="warning" message={error}/>}
 
-        {/* Parsed Data Review */}
-        {parseResult?.ok && (
+        {/* AI Extracted Summary */}
+        {extracted && (
           <div className="rounded-xl p-6 mb-6" style={{background:SURFACE,border:`1px solid ${BORDER}`,boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
-            <h3 className="text-sm font-semibold uppercase tracking-wide mb-5" style={{color:TEXT2}}>Review & Confirm Your Data</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:SUCCESS}}/>
+              <h3 className="text-sm font-semibold uppercase tracking-wide" style={{color:TEXT2}}>AI Analysis Complete</h3>
+            </div>
+
+            {extracted.summary && (
+              <p className="text-sm leading-relaxed mb-5" style={{color:TEXT1}}>{extracted.summary}</p>
+            )}
+
+            {/* Key Numbers */}
+            <div className="grid grid-cols-3 gap-4 mb-5">
+              {[
+                {label:'Revenue / Income',  val:extracted.income?.revenue||0},
+                {label:'Total Expenses',    val:(extracted.income?.cogs||0)+(extracted.income?.opex||0)},
+                {label:'Cash Position',     val:extracted.balance?.cash||0},
+              ].map(({label,val})=>(
+                <div key={label} className="rounded-lg p-3 text-center" style={{background:BG,border:`1px solid ${BORDER}`}}>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{color:TEXT3}}>{label}</p>
+                  <p className="text-lg font-bold" style={{color:TEXT1}}>{val>0?fmt(val,sym):'—'}</p>
+                </div>
+              ))}
+            </div>
+
+            {extracted.notes && (
+              <div className="rounded-lg p-3 mb-5" style={{background:'#FFFBEB',border:`1px solid #FDE68A`}}>
+                <p className="text-xs" style={{color:'#92400E'}}>{extracted.notes}</p>
+              </div>
+            )}
 
             {/* Company Info */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{color:TEXT3}}>Company Information</p>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{color:TEXT3}}>Confirm Company Details</p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="md:col-span-3">
                   <CompanyField label="Company Name" stateKey="name"/>
@@ -556,86 +455,32 @@ function UploadScreen({ onDataReady, userEmail, onSignOut }) {
                 <CompanyField label="Industry" stateKey="industry" options={INDUSTRIES}/>
                 <CompanyField label="Currency" stateKey="currency" options={CURRENCIES}/>
                 <CompanyField label="Reporting Period" stateKey="period" options={PERIODS}/>
-                <div className="col-span-1">
-                  <CompanyField label="Year" stateKey="year" options={YEARS}/>
-                </div>
+                <CompanyField label="Year" stateKey="year" options={YEARS}/>
               </div>
             </div>
-
-            {/* Parsed Summaries */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Income */}
-              <div className="rounded-lg p-4" style={{background:BG,border:`1px solid ${BORDER}`}}>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{color:TEXT2}}>Income Statement</p>
-                {[
-                  {label:'Revenue',       key:'revenue', req:true},
-                  {label:'COGS',          key:'cogs',    req:true},
-                  {label:'OPEX',          key:'opex',    req:true},
-                  {label:'D&A',           key:'da'},
-                  {label:'Interest',      key:'interest'},
-                  {label:'Tax',           key:'tax'},
-                ].map(f=>(
-                  <div key={f.key} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{borderColor:BORDER}}>
-                    <span className="text-xs" style={{color:TEXT2}}>
-                      {f.label}{f.req&&<span style={{color:DANGER}}>*</span>}
-                    </span>
-                    <input
-                      type="number" value={parseResult.income[f.key]}
-                      onChange={e=>setField('income',f.key,e.target.value)}
-                      style={{width:110,textAlign:'right',border:`1px solid ${parseResult.income[f.key]||!f.req?BORDER:DANGER}`,borderRadius:6,padding:'3px 8px',fontSize:12,background:SURFACE,color:TEXT1,outline:'none',fontFamily:'inherit'}}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Balance Sheet */}
-              <div className="rounded-lg p-4" style={{background:BG,border:`1px solid ${BORDER}`}}>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{color:TEXT2}}>Balance Sheet</p>
-                {[
-                  {label:'Cash',            key:'cash',            req:true},
-                  {label:'Receivables',     key:'receivables',     req:true},
-                  {label:'Inventory',       key:'inventory'},
-                  {label:'PP&E (Net)',       key:'ppe'},
-                  {label:'Accounts Payable',key:'payables',        req:true},
-                  {label:'Short-Term Debt', key:'shortTermDebt'},
-                  {label:'Long-Term Debt',  key:'longTermDebt'},
-                  {label:"Equity",          key:'equity',          req:true},
-                ].map(f=>(
-                  <div key={f.key} className="flex items-center justify-between py-1.5 border-b last:border-0" style={{borderColor:BORDER}}>
-                    <span className="text-xs" style={{color:TEXT2}}>
-                      {f.label}{f.req&&<span style={{color:DANGER}}>*</span>}
-                    </span>
-                    <input
-                      type="number" value={parseResult.balance[f.key]}
-                      onChange={e=>setField('balance',f.key,e.target.value)}
-                      style={{width:110,textAlign:'right',border:`1px solid ${parseResult.balance[f.key]||!f.req?BORDER:DANGER}`,borderRadius:6,padding:'3px 8px',fontSize:12,background:SURFACE,color:TEXT1,outline:'none',fontFamily:'inherit'}}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {!requiredOk && (
-              <p className="text-xs mt-3" style={{color:DANGER}}>Fields marked with * are required. Fill in any missing values above to continue.</p>
-            )}
           </div>
         )}
 
-        {/* Generate Dashboard Button */}
-        {parseResult?.ok && (
-          <button
-            disabled={!requiredOk}
-            onClick={()=>onDataReady({
-              company:  parseResult.company,
-              income:   parseResult.income,
-              balance:  parseResult.balance,
-              cashFlow: parseResult.cashFlow,
-              prior:    parseResult.prior,
-            })}
-            className="w-full py-4 rounded-xl text-white font-bold text-base transition"
-            style={{background:requiredOk?ACCENT:BORDER,cursor:requiredOk?'pointer':'not-allowed',color:requiredOk?'#fff':TEXT3}}>
-            Generate Financial Dashboard
-          </button>
+        {/* Generate Button */}
+        {extracted && (
+          <>
+            <button
+              disabled={!canGenerate}
+              onClick={()=>onDataReady({
+                company,
+                income:   extracted.income,
+                balance:  extracted.balance,
+                cashFlow: extracted.cashFlow,
+                prior:    extracted.prior,
+              })}
+              className="w-full py-4 rounded-xl text-white font-bold text-base transition"
+              style={{background:canGenerate?ACCENT:BORDER,cursor:canGenerate?'pointer':'not-allowed',color:canGenerate?'#fff':TEXT3}}>
+              Generate Financial Dashboard
+            </button>
+            {!canGenerate && (
+              <p className="text-xs text-center mt-2" style={{color:DANGER}}>No usable financial data found. Please try a different file.</p>
+            )}
+          </>
         )}
       </main>
     </div>
@@ -968,9 +813,14 @@ export default function App() {
       setScreen(s ? 'upload' : 'auth');
       if (s) restoreFromStorage(s.user.id);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      if (!s) setScreen('auth');
+      if (s && event === 'SIGNED_IN') {
+        setScreen('upload');
+        restoreFromStorage(s.user.id);
+      } else if (!s) {
+        setScreen('auth');
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -1109,7 +959,7 @@ export default function App() {
   }
 
   if (screen === 'auth') {
-    return <AuthScreen onAuthenticated={handleAuthenticated}/>;
+    return <AuthScreen/>;
   }
 
   if (screen === 'upload') {

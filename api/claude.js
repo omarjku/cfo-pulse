@@ -21,98 +21,67 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt } = req.body;
+    const { prompt, fileData, fileMediaType } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    // Get API key from environment variable (server-side)
-    // Try ANTHROPIC_API_KEY first, then VITE_ANTHROPIC_API_KEY
     const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
-
     if (!apiKey) {
-      console.error('API key not configured on server');
-      console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('ANTHROPIC')));
-      console.error('All env vars (first 20):', Object.keys(process.env).slice(0, 20));
-      return res.status(500).json({
-        error: 'Server configuration error: ANTHROPIC_API_KEY not set',
-        availableEnvVars: Object.keys(process.env).filter(k => k.includes('ANTHROPIC'))
-      });
+      return res.status(500).json({ error: 'Server configuration error: ANTHROPIC_API_KEY not set' });
     }
 
-    console.log('Using API key (first 8 chars):', apiKey.substring(0, 8) + '...');
-    console.log('API key length:', apiKey.length);
-    console.log('API key starts with sk-ant?:', apiKey.startsWith('sk-ant'));
+    const anthropic = new Anthropic({ apiKey });
 
-    const anthropic = new Anthropic({
-      apiKey: apiKey,
-    });
+    const isPDFUpload = fileData && fileMediaType === 'application/pdf';
 
-    console.log('Making Claude API call, trying different models...');
+    // Build message content — PDFs use the document content type
+    let messageContent;
+    if (isPDFUpload) {
+      messageContent = [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: fileData },
+        },
+        { type: 'text', text: prompt },
+      ];
+    } else {
+      messageContent = prompt;
+    }
 
-    // Try different models in order of preference
-    const modelsToTry = [
-      'claude-haiku-4-5-20251001',    // Latest Haiku - fast and affordable
-      'claude-3-5-haiku-20241022',    // Claude 3.5 Haiku
-      'claude-3-5-sonnet-20241022',   // Claude 3.5 Sonnet fallback
-      'claude-3-haiku-20240307',      // Claude 3 Haiku fallback
-    ];
+    // PDF extraction needs document-capable models; chat uses fast/cheap models
+    const modelsToTry = isPDFUpload
+      ? ['claude-sonnet-4-6', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022']
+      : ['claude-haiku-4-5-20251001', 'claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'];
+
+    const maxTokens = isPDFUpload ? 2000 : 1000;
 
     let lastError;
-
     for (const model of modelsToTry) {
       try {
-        console.log(`Trying model: ${model}`);
         const response = await anthropic.messages.create({
-          model: model,
-          max_tokens: 1000,
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ]
+          model,
+          max_tokens: maxTokens,
+          messages: [{ role: 'user', content: messageContent }],
         });
-
-        console.log(`Success with model: ${model}`);
         return res.status(200).json({
           success: true,
           insight: response.content[0].text,
-          modelUsed: model
+          modelUsed: model,
         });
       } catch (error) {
-        console.log(`Model ${model} failed:`, error.message);
         lastError = error;
-        continue; // Try next model
+        continue;
       }
     }
-
-    // If we get here, all models failed
-    console.error('All models failed, last error:', lastError);
     throw lastError;
 
-    res.status(200).json({
-      success: true,
-      insight: response.content[0].text
-    });
-
   } catch (error) {
-    console.error('Claude API error:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      status: error.status,
-      statusText: error.statusText,
-      error: error.error
-    });
-
     res.status(500).json({
       success: false,
       error: error.message,
       details: error.status ? `Status: ${error.status}` : undefined,
-      errorType: error.type,
-      anthropicError: error.error
     });
   }
 }
