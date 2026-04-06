@@ -845,7 +845,7 @@ Financial Health Score: ${calc.healthScore}/100`;
     setMessages(prev => [...prev, {role:'user', content:text}]);
     setLoading(true);
     try {
-      const res = await fetch('/api/claude.php', {
+      const res = await fetch(import.meta.env.VITE_API_ENDPOINT || '/api/claude', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ prompt:`${SYSTEM_PROMPT}\n\nFINANCIAL DATA:\n${buildContext()}\n\nUser question: ${text}` }),
       });
