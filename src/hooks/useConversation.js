@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { retrieveChunks } from './useRAG';
 
@@ -27,6 +27,8 @@ export function useConversation() {
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [analysis, setAnalysis] = useState(EMPTY_ANALYSIS);
+  // Track which doc IDs have already been sent to Claude to avoid resending large PDFs.
+  const sentDocIdsRef = useRef(new Set());
 
   const send = useCallback(async ({ text, documents }) => {
     if (!text.trim() || streaming) return;
@@ -38,14 +40,12 @@ export function useConversation() {
     const docIds = documents.filter((d) => d.status === 'ready').map((d) => d.id);
     const documentContext = await retrieveChunks(text, docIds);
 
-    // Only send raw PDFs on the first message — subsequent turns use conversation history.
-    // Re-sending a 30-page PDF every turn burns the 30k input tokens/minute rate limit.
-    const isFirstMessage = !messages.some((m) => m.role === 'assistant');
-    const pdfDocuments = isFirstMessage
-      ? documents
-          .filter((d) => d.ext === 'pdf' && d.base64 && d.status === 'ready')
-          .map((d) => ({ data: d.base64 }))
-      : [];
+    // Only send PDFs that Claude hasn't seen yet — avoids re-sending a 30-page PDF every turn
+    // which burns the 30k input tokens/minute rate limit.
+    const newPdfDocs = documents.filter(
+      (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && !sentDocIdsRef.current.has(d.id)
+    );
+    const pdfDocuments = newPdfDocs.map((d) => ({ data: d.base64 }));
 
     // Cap history to 6 messages and truncate very long assistant responses to ~4000 chars
     // to keep follow-up requests well under the per-minute token budget.
@@ -67,6 +67,9 @@ export function useConversation() {
 
     const setAssistantContent = (content) =>
       setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content } : m));
+
+    // Mark these docs as sent before the request so concurrent sends don't duplicate them.
+    newPdfDocs.forEach((d) => sentDocIdsRef.current.add(d.id));
 
     try {
       const response = await fetch('/api/claude', {
@@ -155,6 +158,8 @@ export function useConversation() {
         }
       }
     } catch (err) {
+      // Un-mark docs so they'll be retried on the next send attempt.
+      newPdfDocs.forEach((d) => sentDocIdsRef.current.delete(d.id));
       setAssistantContent(`⚠️ ${err.message}`);
     } finally {
       setStreaming(false);
@@ -165,6 +170,7 @@ export function useConversation() {
     setMessages([]);
     setConversationId(null);
     setAnalysis(EMPTY_ANALYSIS);
+    sentDocIdsRef.current = new Set();
   };
 
   return { messages, streaming, analysis, send, clear };
