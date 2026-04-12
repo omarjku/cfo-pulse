@@ -1,15 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #05060f;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+/* Custom scrollbar — Midnight Gold */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #080918; }
+::-webkit-scrollbar-thumb { background: #1e2040; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(245,158,11,0.3); }
+
+/* Glow utilities */
+.glow-amber { box-shadow: 0 0 12px rgba(245,158,11,0.3); }
+.glow-amber-sm { box-shadow: 0 0 6px rgba(245,158,11,0.2); }
+.border-amber-glow { border-color: rgba(245,158,11,0.25); }
+
+/* Glass panel */
+.glass {
+  background: rgba(8,9,24,0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
