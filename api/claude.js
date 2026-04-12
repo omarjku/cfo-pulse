@@ -73,12 +73,18 @@ export default async function handler(req, res) {
   // Append the conversation history
   claudeMessages.push(...messages);
 
-  // Set up SSE
+  // Set up SSE — flushHeaders() is critical on Vercel to start streaming immediately
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+  res.flushHeaders();
 
-  const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    // Flush after every event so browser receives it immediately
+    if (typeof res.flush === 'function') res.flush();
+  };
 
   try {
     let continueLoop = true;
