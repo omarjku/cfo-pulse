@@ -35,28 +35,26 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not set' });
 
-  const { pdfBase64, fileName } = req.body;
-  if (!pdfBase64) return res.status(400).json({ error: 'pdfBase64 required' });
+  const { pdfBase64, plainText, fileName } = req.body;
+  if (!pdfBase64 && !plainText) return res.status(400).json({ error: 'pdfBase64 or plainText required' });
 
   const anthropic = new Anthropic({ apiKey });
 
   try {
+    // Build content blocks depending on whether this is a PDF or extracted spreadsheet text
+    const contentBlocks = pdfBase64
+      ? [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+          { type: 'text', text: `Document name: ${fileName || 'Unknown'}\n\n${PROMPT}` },
+        ]
+      : [
+          { type: 'text', text: `Document name: ${fileName || 'Unknown'}\n\nContent:\n${plainText.slice(0, 40000)}\n\n${PROMPT}` },
+        ];
+
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 },
-          },
-          {
-            type: 'text',
-            text: `Document name: ${fileName || 'Unknown'}\n\n${PROMPT}`,
-          },
-        ],
-      }],
+      messages: [{ role: 'user', content: contentBlocks }],
     });
 
     const summary = response.content[0]?.text || '';

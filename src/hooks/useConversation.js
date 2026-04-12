@@ -48,17 +48,27 @@ export function useConversation({ onSave } = {}) {
     setMessages((prev) => [...prev, userMsg]);
 
     const docIds = documents.filter((d) => d.status === 'ready').map((d) => d.id);
-    const documentContext = await retrieveChunks(text, docIds);
+    const ragContext = await retrieveChunks(text, docIds);
+
+    // Spreadsheets (xlsx/csv) are never sent as document blocks — include their
+    // extracted text directly so Claude can see them even without Supabase RAG.
+    const spreadsheetContext = documents
+      .filter((d) => d.status === 'ready' && d.text && d.ext !== 'pdf')
+      .map((d) => `**${d.name}**\n\n${d.text.slice(0, 8000)}`)
+      .join('\n\n---\n\n');
+
+    const documentContext = [ragContext, spreadsheetContext].filter(Boolean).join('\n\n---\n\n');
 
     // New PDFs not yet seen by Claude — send raw for accurate first-read
     const newPdfDocs = documents.filter(
       (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && !sentDocIdsRef.current.has(d.id)
     );
 
-    // Condensed summaries for PDFs already sent — cheap follow-up context
+    // For PDFs already sent: use summary (generated async after upload).
+    // Fall back to a placeholder if summary is still pending — better than silence.
     const existingSummaries = documents
-      .filter((d) => d.status === 'ready' && d.summary && sentDocIdsRef.current.has(d.id))
-      .map((d) => d.summary);
+      .filter((d) => d.ext === 'pdf' && d.status === 'ready' && sentDocIdsRef.current.has(d.id))
+      .map((d) => d.summary || `**${d.name}** — previously provided; summary still generating.`);
 
     // Cap history to 6 messages and strip the JSON dashboard block from assistant content
     // to keep follow-up requests well under the per-minute token budget

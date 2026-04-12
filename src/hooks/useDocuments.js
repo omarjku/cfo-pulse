@@ -82,13 +82,22 @@ export function useDocuments() {
         prev.map((d) => d.id === docId ? { ...d, id: dbId, base64, text, status: 'ready' } : d)
       );
 
-      // Asynchronously generate a condensed fact-sheet summary for PDFs.
+      // Asynchronously generate a condensed fact-sheet summary for all docs.
       // The doc is already 'ready' — summary enriches it in the background.
-      if (isPDF && base64) {
+      // PDFs: send base64 to the summarize endpoint.
+      // Spreadsheets: send extracted text (they're never sent as document blocks,
+      //   so the summary is the only context Claude gets on follow-up turns).
+      const summarizeBody = isPDF && base64
+        ? { pdfBase64: base64, fileName: file.name }
+        : !isPDF && text
+          ? { plainText: text, fileName: file.name }
+          : null;
+
+      if (summarizeBody) {
         fetch('/api/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdfBase64: base64, fileName: file.name }),
+          body: JSON.stringify(summarizeBody),
         })
           .then((r) => r.json())
           .then(({ summary }) => {
@@ -98,7 +107,7 @@ export function useDocuments() {
               );
             }
           })
-          .catch(() => { /* silent — raw PDF fallback still works */ });
+          .catch(() => { /* silent — direct text fallback still works */ });
       }
     } catch (err) {
       setDocuments((prev) => prev.map((d) => d.id === docId ? { ...d, status: 'error' } : d));
