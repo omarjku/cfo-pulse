@@ -38,13 +38,29 @@ export function useConversation() {
     const docIds = documents.filter((d) => d.status === 'ready').map((d) => d.id);
     const documentContext = await retrieveChunks(text, docIds);
 
-    const pdfDocuments = documents
-      .filter((d) => d.ext === 'pdf' && d.base64 && d.status === 'ready')
-      .map((d) => ({ data: d.base64 }));
+    // Only send raw PDFs on the first message — subsequent turns use conversation history.
+    // Re-sending a 30-page PDF every turn burns the 30k input tokens/minute rate limit.
+    const isFirstMessage = !messages.some((m) => m.role === 'assistant');
+    const pdfDocuments = isFirstMessage
+      ? documents
+          .filter((d) => d.ext === 'pdf' && d.base64 && d.status === 'ready')
+          .map((d) => ({ data: d.base64 }))
+      : [];
 
+    // Cap history to 6 messages and truncate very long assistant responses to ~4000 chars
+    // to keep follow-up requests well under the per-minute token budget.
+    const MAX_MSG_CHARS = 4000;
     const history = [...messages, userMsg]
-      .slice(-10)
-      .map(({ role, content }) => ({ role, content: stripJsonBlock(content) }));
+      .slice(-6)
+      .map(({ role, content }) => {
+        const stripped = stripJsonBlock(content);
+        return {
+          role,
+          content: stripped.length > MAX_MSG_CHARS
+            ? stripped.slice(0, MAX_MSG_CHARS) + '\n\n[...analysis truncated for token efficiency...]'
+            : stripped,
+        };
+      });
 
     const assistantId = Date.now() + 1;
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
