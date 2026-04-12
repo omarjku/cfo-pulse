@@ -29,7 +29,7 @@ export function InputBar({ onSend, onAttach, streaming, attachedDocs = [] }) {
   };
 
   return (
-    <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.BORDER}`, background: T.SURFACE }}>
+    <div style={{ padding: '14px 20px', borderTop: `1px solid ${T.BORDER}`, background: 'rgba(8,9,24,0.95)', backdropFilter: 'blur(20px)' }}>
       {/* Attached doc chips */}
       <AnimatePresence>
         {attachedDocs.length > 0 && (
@@ -54,12 +54,18 @@ export function InputBar({ onSend, onAttach, streaming, attachedDocs = [] }) {
       </AnimatePresence>
 
       <motion.div
-        animate={{ boxShadow: streaming ? `0 0 16px rgba(245,158,11,0.15)` : `0 0 0px rgba(245,158,11,0)` }}
+        animate={{
+          boxShadow: streaming
+            ? `0 0 0 1px rgba(245,158,11,0.4), 0 0 24px rgba(245,158,11,0.2)`
+            : `0 0 0 1px rgba(245,158,11,0.15), 0 0 0px rgba(245,158,11,0)`,
+        }}
         transition={{ duration: 0.4 }}
         style={{
           display: 'flex', alignItems: 'flex-end', gap: 8,
-          background: T.SURFACE2, border: `1px solid ${T.BORDER_A}`,
-          borderRadius: 12, padding: '8px 12px',
+          background: 'rgba(10,11,26,0.9)',
+          border: `1px solid rgba(245,158,11,0.18)`,
+          borderRadius: 14, padding: '10px 14px',
+          backdropFilter: 'blur(12px)',
         }}
       >
         <button
