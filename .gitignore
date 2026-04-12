@@ -109,3 +109,6 @@ dist-ssr
 .DS_Store
 Thumbs.db
 .vercel
+
+# Git worktrees
+.worktrees/
