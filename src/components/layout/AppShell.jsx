@@ -53,7 +53,7 @@ export function AppShell() {
           flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
           borderRight: `1px solid ${T.BORDER}`,
         }}>
-          <ChatPanel messages={messages} streaming={streaming} />
+          <ChatPanel messages={messages} streaming={streaming} onSend={handleSend} />
           {docError && (
             <div style={{ padding: '4px 16px', fontSize: 11, color: T.DANGER, background: 'rgba(239,68,68,0.1)' }}>
               {docError}

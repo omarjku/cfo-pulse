@@ -4,23 +4,15 @@ import { T } from '../../lib/tokens';
 
 function CFOAvatar() {
   return (
-    <div style={{ position: 'relative', flexShrink: 0, width: 34, height: 34 }}>
-      {/* Glow ring */}
-      <div style={{
-        position: 'absolute', inset: -3, borderRadius: 10,
-        background: 'conic-gradient(from 0deg, rgba(245,158,11,0.6), rgba(245,158,11,0.1), rgba(245,158,11,0.6))',
-        animation: 'spin 4s linear infinite',
-      }} />
-      <div style={{
-        position: 'relative', width: 34, height: 34, borderRadius: 9,
-        background: T.GRAD_AMBER,
-        boxShadow: '0 0 16px rgba(245,158,11,0.5)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, fontWeight: 900, color: '#05060f', fontFamily: 'monospace',
-        letterSpacing: '0.5px',
-      }}>
-        CF
-      </div>
+    <div style={{
+      width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+      boxShadow: '0 0 12px rgba(245,158,11,0.4), 0 0 0 1px rgba(245,158,11,0.3)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 10, fontWeight: 900, color: '#05060f', fontFamily: 'monospace',
+      letterSpacing: '0.5px',
+    }}>
+      CF
     </div>
   );
 }

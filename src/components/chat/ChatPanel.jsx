@@ -10,7 +10,7 @@ const SUGGESTIONS = [
   'Compare to industry benchmarks',
 ];
 
-function EmptyState() {
+function EmptyState({ onSend }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -18,14 +18,6 @@ function EmptyState() {
     }}>
       {/* Avatar with animated glow ring */}
       <div style={{ position: 'relative' }}>
-        <motion.div
-          animate={{ scale: [1, 1.08, 1], opacity: [0.4, 0.8, 0.4] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-          style={{
-            position: 'absolute', inset: -10, borderRadius: 22,
-            background: 'radial-gradient(circle, rgba(245,158,11,0.3) 0%, transparent 70%)',
-          }}
-        />
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
@@ -70,12 +62,13 @@ function EmptyState() {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 + i * 0.06, duration: 0.3 }}
+            onClick={() => onSend(s)}
             style={{
               background: 'rgba(10,11,26,0.8)',
               border: `1px solid ${T.BORDER}`,
               borderRadius: 20, padding: '6px 14px',
               fontSize: 12, color: T.TEXT2,
-              cursor: 'default',
+              cursor: 'pointer',
               backdropFilter: 'blur(8px)',
               transition: 'border-color 0.2s, color 0.2s',
             }}
@@ -89,7 +82,7 @@ function EmptyState() {
   );
 }
 
-export function ChatPanel({ messages, streaming }) {
+export function ChatPanel({ messages, streaming, onSend }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -99,7 +92,7 @@ export function ChatPanel({ messages, streaming }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
       {messages.length === 0 ? (
-        <EmptyState />
+        <EmptyState onSend={onSend} />
       ) : (
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
