@@ -59,10 +59,16 @@ export function useConversation() {
         body: JSON.stringify({ messages: history, documentContext, pdfDocuments }),
       });
 
-      // Surface HTTP-level errors immediately
+      // Surface HTTP-level errors immediately with clean message
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Server error ${response.status}: ${errText}`);
+        let friendlyMsg = `Server error ${response.status}`;
+        try {
+          const parsed = JSON.parse(errText);
+          const msg = parsed?.error?.message || parsed?.message;
+          if (msg) friendlyMsg = msg;
+        } catch { /* not JSON */ }
+        throw new Error(friendlyMsg);
       }
 
       const reader = response.body.getReader();
@@ -100,8 +106,13 @@ export function useConversation() {
               }
 
             } else if (event.type === 'error') {
-              // Surface API-level errors (bad key, quota, etc.)
-              setAssistantContent(`⚠️ ${event.message}`);
+              // Surface API-level errors — parse JSON blob if present
+              let errMsg = event.message || 'Unknown error';
+              try {
+                const parsed = JSON.parse(errMsg);
+                errMsg = parsed?.error?.message || parsed?.message || errMsg;
+              } catch { /* already plain text */ }
+              setAssistantContent(`⚠️ ${errMsg}`);
             }
           } catch {
             // Incomplete JSON fragment — will be retried via lineBuffer on next chunk
