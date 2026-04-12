@@ -1,10 +1,62 @@
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, MessageSquare, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, LogOut } from 'lucide-react';
 import { UploadZone } from '../documents/UploadZone';
 import { DocumentLibrary } from '../documents/DocumentLibrary';
 import { T } from '../../lib/tokens';
 
-export function Sidebar({ collapsed, onToggle, documents, onAddDocument, onRemoveDocument, onNewChat }) {
+function HistoryItem({ item, active, onLoad, onDelete }) {
+  const [hovered, setHovered] = useState(false);
+  const date = new Date(item.createdAt);
+  const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        borderRadius: 5,
+        background: active ? 'rgba(245,158,11,0.08)' : hovered ? T.SURFACE2 : 'transparent',
+        border: active ? `1px solid ${T.BORDER_A}` : '1px solid transparent',
+        transition: 'background 0.15s, border-color 0.15s',
+        cursor: 'pointer',
+        padding: '5px 7px',
+      }}
+    >
+      <div
+        onClick={() => onLoad(item)}
+        style={{ flex: 1, minWidth: 0 }}
+      >
+        <p style={{
+          fontSize: 11, color: active ? T.AMBER : T.TEXT2,
+          margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {item.title || 'Untitled'}
+        </p>
+        <p style={{ fontSize: 9, color: T.TEXT3, margin: 0, fontFamily: 'monospace' }}>{label}</p>
+      </div>
+      {hovered && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.TEXT3, padding: 2, flexShrink: 0, display: 'flex' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = T.DANGER}
+          onMouseLeave={(e) => e.currentTarget.style.color = T.TEXT3}
+        >
+          <Trash2 size={10} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function Sidebar({
+  collapsed, onToggle,
+  documents, onAddDocument, onRemoveDocument,
+  onNewChat, onLogout,
+  history, activeConvId, onLoadHistory, onDeleteHistory,
+  username,
+}) {
   return (
     <motion.div
       animate={{ width: collapsed ? 52 : 220 }}
@@ -55,13 +107,14 @@ export function Sidebar({ collapsed, onToggle, documents, onAddDocument, onRemov
             cursor: 'pointer', color: T.TEXT3, padding: 3, display: 'flex',
             transition: 'color 0.2s, border-color 0.2s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.color = T.AMBER; e.currentTarget.style.borderColor = T.BORDER_A; }}
-          onMouseLeave={e => { e.currentTarget.style.color = T.TEXT3; e.currentTarget.style.borderColor = T.BORDER; }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = T.AMBER; e.currentTarget.style.borderColor = T.BORDER_A; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = T.TEXT3; e.currentTarget.style.borderColor = T.BORDER; }}
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
       </div>
 
+      {/* Expanded sidebar content */}
       <AnimatePresence>
         {!collapsed && (
           <motion.div
@@ -78,11 +131,31 @@ export function Sidebar({ collapsed, onToggle, documents, onAddDocument, onRemov
                 cursor: 'pointer', color: T.TEXT2, fontSize: 11, width: '100%',
                 transition: 'border-color 0.2s, color 0.2s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.BORDER_A; e.currentTarget.style.color = T.AMBER; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.BORDER; e.currentTarget.style.color = T.TEXT2; }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.BORDER_A; e.currentTarget.style.color = T.AMBER; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.BORDER; e.currentTarget.style.color = T.TEXT2; }}
             >
               <Plus size={11} /> New Chat
             </button>
+
+            {/* Conversation history */}
+            {history.length > 0 && (
+              <div>
+                <p style={{ fontSize: 9, fontWeight: 700, color: T.TEXT3, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 5px', fontFamily: 'monospace' }}>
+                  HISTORY
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {history.map((item) => (
+                    <HistoryItem
+                      key={item.id}
+                      item={item}
+                      active={item.id === activeConvId}
+                      onLoad={onLoadHistory}
+                      onDelete={onDeleteHistory}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Documents section */}
             <div>
@@ -106,8 +179,8 @@ export function Sidebar({ collapsed, onToggle, documents, onAddDocument, onRemov
           <button
             onClick={onNewChat}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.TEXT3, padding: 6 }}
-            onMouseEnter={e => e.currentTarget.style.color = T.AMBER}
-            onMouseLeave={e => e.currentTarget.style.color = T.TEXT3}
+            onMouseEnter={(e) => e.currentTarget.style.color = T.AMBER}
+            onMouseLeave={(e) => e.currentTarget.style.color = T.TEXT3}
             title="New Chat"
           >
             <MessageSquare size={16} />
@@ -115,8 +188,8 @@ export function Sidebar({ collapsed, onToggle, documents, onAddDocument, onRemov
           <button
             onClick={() => document.querySelector('input[type=file]')?.click()}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.TEXT3, padding: 6 }}
-            onMouseEnter={e => e.currentTarget.style.color = T.AMBER}
-            onMouseLeave={e => e.currentTarget.style.color = T.TEXT3}
+            onMouseEnter={(e) => e.currentTarget.style.color = T.AMBER}
+            onMouseLeave={(e) => e.currentTarget.style.color = T.TEXT3}
             title="Upload document"
           >
             <Plus size={16} />
@@ -126,6 +199,28 @@ export function Sidebar({ collapsed, onToggle, documents, onAddDocument, onRemov
           ))}
         </div>
       )}
+
+      {/* Footer: user + logout */}
+      <div style={{
+        borderTop: `1px solid ${T.BORDER}`, padding: collapsed ? '10px 0' : '8px 10px',
+        flexShrink: 0, display: 'flex', alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'space-between',
+      }}>
+        {!collapsed && (
+          <span style={{ fontSize: 10, color: T.TEXT3, fontFamily: 'monospace' }}>
+            {username}
+          </span>
+        )}
+        <button
+          onClick={onLogout}
+          title="Sign out"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.TEXT3, padding: 4, display: 'flex' }}
+          onMouseEnter={(e) => e.currentTarget.style.color = T.DANGER}
+          onMouseLeave={(e) => e.currentTarget.style.color = T.TEXT3}
+        >
+          <LogOut size={13} />
+        </button>
+      </div>
     </motion.div>
   );
 }

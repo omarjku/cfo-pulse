@@ -1,26 +1,30 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const SYSTEM_PROMPT = `You are CFO-Pulse, an elite financial AI assistant built for founders and finance teams. You analyze financial documents with the precision of a Big-4 auditor and the strategic clarity of a Fortune 500 CFO. You are direct, quantified, and actionable. You never hedge without data. When you identify a risk, you name the number. When you make a recommendation, you state the expected impact.
+const MODEL = 'claude-haiku-4-5-20251001';
 
-When you have completed your analysis, append a JSON block at the very end of your response in this exact format (the UI will parse it to update the live dashboard):
+const SYSTEM_PROMPT = `You are CFO-Pulse, a senior financial advisor. Communicate like a CFO texting a founder — direct, precise, brief.
+
+STYLE:
+- Lead with the key number or finding, immediately
+- Bullets for lists, prose for single insights
+- Max 3 short paragraphs unless user asks for a full report
+- Every claim must be quantified: "$1.2M", "34% margin" — never "significant" or "substantial"
+- Flag risks with the exact dollar amount or percentage at stake
+- No preamble ("Great question!", "Certainly!") — start with the answer
+
+INCOMPLETE DATA RULE (strictly enforced):
+If the uploaded documents are missing standard financial statements needed for the requested analysis (e.g., only bank transactions but no P&L, or no balance sheet), do NOT produce estimates or partial analysis. Instead:
+1. State exactly which statements are present
+2. State exactly which statements are missing
+3. Explain what analysis cannot be done without them
+4. Suggest what the user should upload next
+
+DASHBOARD JSON:
+When you have real financial figures from documents, append this block at the very END of your response. The UI parses it for live KPIs. Omit entirely for conversational replies.
 
 \`\`\`json
-{"healthScore":75,"income":{"revenue":2400000,"cogs":900000,"opex":600000,"da":50000,"interest":20000,"tax":80000},"balance":{"cash":400000,"receivables":180000,"inventory":0,"otherCurrent":50000,"ppe":200000,"otherLongTerm":0,"payables":120000,"shortTermDebt":0,"otherCurrentLiab":30000,"longTermDebt":100000,"equity":580000},"cashFlow":{"operating":750000,"investing":-80000,"financing":-50000},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[{"month":"2024-01","revenue":200000,"expenses":130000,"netProfit":70000}],"analysis":{"executiveSummary":"...","riskFactors":["..."],"strengths":["..."],"recommendations":["..."]}}
-\`\`\`
-
-Only include this JSON block when you have actual financial data to report. For conversational messages, omit it entirely.`;
-
-const webSearchTool = {
-  name: 'web_search',
-  description: 'Search the web for current financial data, market rates, industry benchmarks, or news relevant to the financial analysis.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      query: { type: 'string', description: 'The search query' },
-    },
-    required: ['query'],
-  },
-};
+{"healthScore":75,"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[],"analysis":{"executiveSummary":"","riskFactors":[],"strengths":[],"recommendations":[]}}
+\`\`\``;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -33,20 +37,23 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
 
-  const { messages, documentContext, pdfDocuments } = req.body;
+  const { messages, documentContext, pdfDocuments, documentSummaries } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
   const anthropic = new Anthropic({ apiKey });
 
-  // Build the messages array with prompt caching on document context
+  // Build Claude message array — inject document context as first synthetic turn
   const claudeMessages = [];
+  const hasContext =
+    (pdfDocuments?.length > 0) ||
+    (documentSummaries?.length > 0) ||
+    documentContext;
 
-  // If there's document context (RAG chunks), inject as first user message with caching
-  if (documentContext || (pdfDocuments && pdfDocuments.length > 0)) {
+  if (hasContext) {
     const contextContent = [];
 
-    // PDF documents (base64) with cache_control
-    if (pdfDocuments && pdfDocuments.length > 0) {
+    // Raw PDFs (only sent on first appearance per doc — enforced client-side)
+    if (pdfDocuments?.length > 0) {
       for (const pdf of pdfDocuments) {
         contextContent.push({
           type: 'document',
@@ -56,102 +63,56 @@ export default async function handler(req, res) {
       }
     }
 
-    // RAG text chunks with cache_control
-    if (documentContext) {
+    // Condensed fact-sheet summaries for documents already analyzed (cheap follow-up context)
+    if (documentSummaries?.length > 0) {
       contextContent.push({
         type: 'text',
-        text: `Relevant excerpts from uploaded financial documents:\n\n${documentContext}`,
+        text: `DOCUMENT FACT SHEETS (condensed from uploaded files):\n\n${documentSummaries.join('\n\n---\n\n')}`,
         cache_control: { type: 'ephemeral' },
       });
     }
 
-    contextContent.push({ type: 'text', text: 'Use the above document context to inform your analysis.' });
+    // RAG chunks from full-text search
+    if (documentContext) {
+      contextContent.push({
+        type: 'text',
+        text: `RELEVANT EXCERPTS:\n\n${documentContext}`,
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+
+    contextContent.push({ type: 'text', text: 'Use the above documents for your analysis.' });
     claudeMessages.push({ role: 'user', content: contextContent });
-    claudeMessages.push({ role: 'assistant', content: 'I have reviewed the financial documents and context. I am ready to provide analysis.' });
+    claudeMessages.push({ role: 'assistant', content: 'Documents reviewed. Ready.' });
   }
 
-  // Append the conversation history
   claudeMessages.push(...messages);
 
-  // Set up SSE — flushHeaders() is critical on Vercel to start streaming immediately
+  // SSE setup — flushHeaders() starts streaming immediately on Vercel
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   const sendEvent = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
-    // Flush after every event so browser receives it immediately
     if (typeof res.flush === 'function') res.flush();
   };
 
   try {
-    let continueLoop = true;
-    let loopMessages = [...claudeMessages];
-    let toolUseBlock = null;
+    const stream = anthropic.messages.stream({
+      model: MODEL,
+      max_tokens: 1024,
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      messages: claudeMessages,
+    });
 
-    while (continueLoop) {
-      const stream = anthropic.messages.stream({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        messages: loopMessages,
-        tools: [webSearchTool],
-      });
-
-      let accumulatedText = '';
-      let inputJson = '';
-      let currentToolUse = null;
-
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta') {
-          if (event.delta.type === 'text_delta') {
-            accumulatedText += event.delta.text;
-            sendEvent({ type: 'text', text: event.delta.text });
-          } else if (event.delta.type === 'input_json_delta') {
-            inputJson += event.delta.partial_json;
-          }
-        } else if (event.type === 'content_block_start') {
-          if (event.content_block.type === 'tool_use') {
-            currentToolUse = { id: event.content_block.id, name: event.content_block.name };
-            inputJson = '';
-          }
-        } else if (event.type === 'content_block_stop' && currentToolUse) {
-          toolUseBlock = { ...currentToolUse, input: JSON.parse(inputJson || '{}') };
-          currentToolUse = null;
-        } else if (event.type === 'message_stop') {
-          const stopReason = event.message?.stop_reason;
-          if (stopReason === 'tool_use' && toolUseBlock) {
-            // Execute the tool
-            sendEvent({ type: 'tool_start', tool: toolUseBlock.name, query: toolUseBlock.input.query });
-            let toolResult = '';
-            try {
-              const searchRes = await fetch(`${req.headers.origin || 'http://localhost:3000'}/api/search`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: toolUseBlock.input.query }),
-              });
-              const searchData = await searchRes.json();
-              toolResult = searchData.results
-                .map((r) => `${r.title}\n${r.url}\n${r.content}`)
-                .join('\n\n---\n\n');
-            } catch {
-              toolResult = 'Search unavailable.';
-            }
-
-            // Add assistant + tool_result to loop
-            loopMessages = [
-              ...loopMessages,
-              { role: 'assistant', content: [{ type: 'tool_use', id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input }] },
-              { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: toolResult }] },
-            ];
-            toolUseBlock = null;
-          } else {
-            continueLoop = false;
-            sendEvent({ type: 'done' });
-          }
-        }
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        sendEvent({ type: 'text', text: event.delta.text });
+      } else if (event.type === 'message_stop') {
+        sendEvent({ type: 'done' });
       }
     }
   } catch (err) {

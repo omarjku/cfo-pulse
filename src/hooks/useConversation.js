@@ -22,17 +22,27 @@ function stripJsonBlock(text) {
   return text.replace(/```json\s*[\s\S]*?\s*```/g, '').trim();
 }
 
-export function useConversation() {
-  const [conversationId, setConversationId] = useState(null);
+// Each conversation gets a unique ID generated on the first send
+function newConvId() {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function useConversation({ onSave } = {}) {
+  const [supabaseConvId, setSupabaseConvId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [analysis, setAnalysis] = useState(EMPTY_ANALYSIS);
-  // Track which doc IDs have already been sent to Claude to avoid resending large PDFs.
+
+  // Tracks which doc IDs have already been sent as raw PDFs — avoids re-sending each turn
   const sentDocIdsRef = useRef(new Set());
+  // Stable conversation ID for history (created on first send, reset on clear)
+  const convIdRef = useRef(null);
 
   const send = useCallback(async ({ text, documents }) => {
     if (!text.trim() || streaming) return;
     setStreaming(true);
+
+    if (!convIdRef.current) convIdRef.current = newConvId();
 
     const userMsg = { id: Date.now(), role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
@@ -40,16 +50,19 @@ export function useConversation() {
     const docIds = documents.filter((d) => d.status === 'ready').map((d) => d.id);
     const documentContext = await retrieveChunks(text, docIds);
 
-    // Only send PDFs that Claude hasn't seen yet — avoids re-sending a 30-page PDF every turn
-    // which burns the 30k input tokens/minute rate limit.
+    // New PDFs not yet seen by Claude — send raw for accurate first-read
     const newPdfDocs = documents.filter(
       (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && !sentDocIdsRef.current.has(d.id)
     );
-    const pdfDocuments = newPdfDocs.map((d) => ({ data: d.base64 }));
 
-    // Cap history to 6 messages and truncate very long assistant responses to ~4000 chars
-    // to keep follow-up requests well under the per-minute token budget.
-    const MAX_MSG_CHARS = 4000;
+    // Condensed summaries for PDFs already sent — cheap follow-up context
+    const existingSummaries = documents
+      .filter((d) => d.status === 'ready' && d.summary && sentDocIdsRef.current.has(d.id))
+      .map((d) => d.summary);
+
+    // Cap history to 6 messages and strip the JSON dashboard block from assistant content
+    // to keep follow-up requests well under the per-minute token budget
+    const MAX_MSG_CHARS = 3000;
     const history = [...messages, userMsg]
       .slice(-6)
       .map(({ role, content }) => {
@@ -57,7 +70,7 @@ export function useConversation() {
         return {
           role,
           content: stripped.length > MAX_MSG_CHARS
-            ? stripped.slice(0, MAX_MSG_CHARS) + '\n\n[...analysis truncated for token efficiency...]'
+            ? stripped.slice(0, MAX_MSG_CHARS) + '\n\n[...truncated]'
             : stripped,
         };
       });
@@ -66,19 +79,23 @@ export function useConversation() {
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
     const setAssistantContent = (content) =>
-      setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content } : m));
+      setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content } : m)));
 
-    // Mark these docs as sent before the request so concurrent sends don't duplicate them.
+    // Mark new PDFs as sent before the request
     newPdfDocs.forEach((d) => sentDocIdsRef.current.add(d.id));
 
     try {
       const response = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, documentContext, pdfDocuments }),
+        body: JSON.stringify({
+          messages: history,
+          documentContext,
+          pdfDocuments: newPdfDocs.map((d) => ({ data: d.base64 })),
+          documentSummaries: existingSummaries,
+        }),
       });
 
-      // Surface HTTP-level errors immediately with clean message
       if (!response.ok) {
         const errText = await response.text();
         let friendlyMsg = `Server error ${response.status}`;
@@ -93,18 +110,15 @@ export function useConversation() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
-      let lineBuffer = ''; // accumulate partial SSE lines across chunks
+      let lineBuffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        // Stream-decode to handle multi-byte chars correctly
         lineBuffer += decoder.decode(value, { stream: true });
-
-        // Split by newline but keep trailing incomplete line in buffer
         const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop() ?? ''; // last element may be incomplete
+        lineBuffer = lines.pop() ?? '';
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
@@ -125,30 +139,27 @@ export function useConversation() {
               }
 
             } else if (event.type === 'error') {
-              // Surface API-level errors — parse JSON blob if present
               let errMsg = event.message || 'Unknown error';
               try {
                 const parsed = JSON.parse(errMsg);
                 errMsg = parsed?.error?.message || parsed?.message || errMsg;
-              } catch { /* already plain text */ }
+              } catch { /* plain text */ }
               setAssistantContent(`⚠️ ${errMsg}`);
             }
-          } catch {
-            // Incomplete JSON fragment — will be retried via lineBuffer on next chunk
-          }
+          } catch { /* partial JSON fragment — next chunk will complete it */ }
         }
       }
 
       // Persist to Supabase
       if (supabase) {
-        let cid = conversationId;
+        let cid = supabaseConvId;
         if (!cid) {
           const { data } = await supabase
             .from('conversations')
             .insert({ title: text.slice(0, 60) })
             .select('id')
             .single();
-          if (data) { cid = data.id; setConversationId(cid); }
+          if (data) { cid = data.id; setSupabaseConvId(cid); }
         }
         if (cid) {
           await supabase.from('messages').insert([
@@ -157,21 +168,36 @@ export function useConversation() {
           ]);
         }
       }
+
+      // Save to local history
+      if (onSave) {
+        const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: stripJsonBlock(fullText) }];
+        onSave(convIdRef.current, text.slice(0, 60), finalMessages, analysis);
+      }
+
     } catch (err) {
-      // Un-mark docs so they'll be retried on the next send attempt.
       newPdfDocs.forEach((d) => sentDocIdsRef.current.delete(d.id));
       setAssistantContent(`⚠️ ${err.message}`);
     } finally {
       setStreaming(false);
     }
-  }, [messages, streaming, conversationId]);
+  }, [messages, streaming, supabaseConvId, analysis, onSave]);
 
   const clear = () => {
     setMessages([]);
-    setConversationId(null);
+    setSupabaseConvId(null);
     setAnalysis(EMPTY_ANALYSIS);
     sentDocIdsRef.current = new Set();
+    convIdRef.current = null;
   };
 
-  return { messages, streaming, analysis, send, clear };
+  const restore = (savedMessages, savedAnalysis) => {
+    setMessages(savedMessages);
+    setAnalysis(savedAnalysis || EMPTY_ANALYSIS);
+    setSupabaseConvId(null);
+    sentDocIdsRef.current = new Set();
+    convIdRef.current = null;
+  };
+
+  return { messages, streaming, analysis, send, clear, restore };
 }

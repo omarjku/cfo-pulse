@@ -81,6 +81,25 @@ export function useDocuments() {
       setDocuments((prev) =>
         prev.map((d) => d.id === docId ? { ...d, id: dbId, base64, text, status: 'ready' } : d)
       );
+
+      // Asynchronously generate a condensed fact-sheet summary for PDFs.
+      // The doc is already 'ready' — summary enriches it in the background.
+      if (isPDF && base64) {
+        fetch('/api/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdfBase64: base64, fileName: file.name }),
+        })
+          .then((r) => r.json())
+          .then(({ summary }) => {
+            if (summary) {
+              setDocuments((prev) =>
+                prev.map((d) => d.id === dbId ? { ...d, summary } : d)
+              );
+            }
+          })
+          .catch(() => { /* silent — raw PDF fallback still works */ });
+      }
     } catch (err) {
       setDocuments((prev) => prev.map((d) => d.id === docId ? { ...d, status: 'error' } : d));
       setError(`Failed to process ${file.name}: ${err.message}`);
