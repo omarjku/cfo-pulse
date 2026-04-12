@@ -24,7 +24,7 @@ function stripJsonBlock(text) {
 
 export function useConversation() {
   const [conversationId, setConversationId] = useState(null);
-  const [messages, setMessages] = useState([]);      // [{ role, content, id }]
+  const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [analysis, setAnalysis] = useState(EMPTY_ANALYSIS);
 
@@ -32,27 +32,25 @@ export function useConversation() {
     if (!text.trim() || streaming) return;
     setStreaming(true);
 
-    // Build user message
     const userMsg = { id: Date.now(), role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
 
-    // RAG: retrieve relevant chunks
     const docIds = documents.filter((d) => d.status === 'ready').map((d) => d.id);
     const documentContext = await retrieveChunks(text, docIds);
 
-    // PDF documents for vision
     const pdfDocuments = documents
       .filter((d) => d.ext === 'pdf' && d.base64 && d.status === 'ready')
       .map((d) => ({ data: d.base64 }));
 
-    // Build messages array (last 10 to avoid context overflow)
     const history = [...messages, userMsg]
       .slice(-10)
       .map(({ role, content }) => ({ role, content: stripJsonBlock(content) }));
 
-    // Add placeholder assistant message
     const assistantId = Date.now() + 1;
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+
+    const setAssistantContent = (content) =>
+      setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content } : m));
 
     try {
       const response = await fetch('/api/claude', {
@@ -61,35 +59,53 @@ export function useConversation() {
         body: JSON.stringify({ messages: history, documentContext, pdfDocuments }),
       });
 
+      // Surface HTTP-level errors immediately
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Server error ${response.status}: ${errText}`);
+      }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
+      let lineBuffer = ''; // accumulate partial SSE lines across chunks
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const lines = decoder.decode(value).split('\n');
+
+        // Stream-decode to handle multi-byte chars correctly
+        lineBuffer += decoder.decode(value, { stream: true });
+
+        // Split by newline but keep trailing incomplete line in buffer
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop() ?? ''; // last element may be incomplete
+
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
           try {
-            const event = JSON.parse(line.slice(6));
+            const event = JSON.parse(raw);
+
             if (event.type === 'text') {
               fullText += event.text;
-              setMessages((prev) =>
-                prev.map((m) => m.id === assistantId ? { ...m, content: fullText } : m)
-              );
+              setAssistantContent(fullText);
+
             } else if (event.type === 'done') {
-              // Extract JSON block for dashboard
               const json = extractJsonBlock(fullText);
               if (json) {
                 setAnalysis((prev) => ({ ...prev, ...json }));
-                // Strip JSON from displayed message
-                setMessages((prev) =>
-                  prev.map((m) => m.id === assistantId ? { ...m, content: stripJsonBlock(fullText) } : m)
-                );
+                setAssistantContent(stripJsonBlock(fullText));
               }
+
+            } else if (event.type === 'error') {
+              // Surface API-level errors (bad key, quota, etc.)
+              setAssistantContent(`⚠️ ${event.message}`);
             }
-          } catch { /* ignore parse errors on incomplete chunks */ }
+          } catch {
+            // Incomplete JSON fragment — will be retried via lineBuffer on next chunk
+          }
         }
       }
 
@@ -112,12 +128,7 @@ export function useConversation() {
         }
       }
     } catch (err) {
-      setMessages((prev) =>
-        prev.map((m) => m.id === assistantId
-          ? { ...m, content: `Error: ${err.message}` }
-          : m
-        )
-      );
+      setAssistantContent(`⚠️ ${err.message}`);
     } finally {
       setStreaming(false);
     }
