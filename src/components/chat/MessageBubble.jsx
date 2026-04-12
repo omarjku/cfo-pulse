@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
 import { StreamingCursor } from './StreamingCursor';
 import { T } from '../../lib/tokens';
 
@@ -31,6 +32,112 @@ function UserAvatar() {
   );
 }
 
+// Markdown component overrides — styled to match the dark theme
+const mdComponents = {
+  p({ children }) {
+    return (
+      <p style={{ margin: '0 0 10px', lineHeight: 1.7, fontSize: 14, color: T.TEXT1 }}>
+        {children}
+      </p>
+    );
+  },
+  // Last <p> inside a bubble shouldn't have bottom margin
+  // (handled by the container's lastChild selector workaround below)
+  strong({ children }) {
+    return <strong style={{ fontWeight: 700, color: T.TEXT1 }}>{children}</strong>;
+  },
+  em({ children }) {
+    return <em style={{ color: T.TEXT2, fontStyle: 'italic' }}>{children}</em>;
+  },
+  h1({ children }) {
+    return <h1 style={{ fontSize: 16, fontWeight: 800, color: T.TEXT1, margin: '14px 0 6px', letterSpacing: '-0.3px' }}>{children}</h1>;
+  },
+  h2({ children }) {
+    return <h2 style={{ fontSize: 14, fontWeight: 700, color: T.TEXT1, margin: '12px 0 5px', letterSpacing: '-0.2px' }}>{children}</h2>;
+  },
+  h3({ children }) {
+    return <h3 style={{ fontSize: 13, fontWeight: 700, color: T.AMBER, margin: '10px 0 4px', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{children}</h3>;
+  },
+  ul({ children }) {
+    return <ul style={{ margin: '4px 0 10px', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>{children}</ul>;
+  },
+  ol({ children }) {
+    return <ol style={{ margin: '4px 0 10px', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>{children}</ol>;
+  },
+  li({ children }) {
+    return <li style={{ fontSize: 14, color: T.TEXT1, lineHeight: 1.65 }}>{children}</li>;
+  },
+  code({ inline, children }) {
+    if (inline) {
+      return (
+        <code style={{
+          background: 'rgba(245,158,11,0.12)',
+          border: '1px solid rgba(245,158,11,0.2)',
+          borderRadius: 4,
+          padding: '1px 5px',
+          fontSize: 12,
+          fontFamily: 'monospace',
+          color: T.AMBER,
+        }}>
+          {children}
+        </code>
+      );
+    }
+    return (
+      <pre style={{
+        background: 'rgba(5,6,15,0.7)',
+        border: `1px solid ${T.BORDER}`,
+        borderRadius: 6,
+        padding: '10px 14px',
+        margin: '8px 0',
+        overflowX: 'auto',
+        fontSize: 12,
+        fontFamily: 'monospace',
+        color: T.TEXT2,
+        lineHeight: 1.6,
+      }}>
+        <code>{children}</code>
+      </pre>
+    );
+  },
+  blockquote({ children }) {
+    return (
+      <blockquote style={{
+        borderLeft: `3px solid ${T.AMBER}`,
+        paddingLeft: 12,
+        margin: '8px 0',
+        color: T.TEXT2,
+        fontStyle: 'italic',
+      }}>
+        {children}
+      </blockquote>
+    );
+  },
+  hr() {
+    return <hr style={{ border: 'none', borderTop: `1px solid ${T.BORDER}`, margin: '10px 0' }} />;
+  },
+  a({ href, children }) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: T.AMBER, textDecoration: 'underline', textDecorationColor: 'rgba(245,158,11,0.4)' }}>
+        {children}
+      </a>
+    );
+  },
+  table({ children }) {
+    return (
+      <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>{children}</table>
+      </div>
+    );
+  },
+  th({ children }) {
+    return <th style={{ padding: '5px 10px', borderBottom: `1px solid ${T.BORDER}`, color: T.AMBER, fontFamily: 'monospace', fontSize: 11, textAlign: 'left', fontWeight: 700 }}>{children}</th>;
+  },
+  td({ children }) {
+    return <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.BORDER}`, color: T.TEXT2, fontSize: 13 }}>{children}</td>;
+  },
+};
+
 export function MessageBubble({ role, content, isStreaming }) {
   const isAssistant = role === 'assistant';
 
@@ -51,9 +158,7 @@ export function MessageBubble({ role, content, isStreaming }) {
 
       <div style={{
         maxWidth: '76%',
-        background: isAssistant
-          ? 'rgba(8,9,24,0.82)'
-          : 'rgba(13,14,31,0.9)',
+        background: isAssistant ? 'rgba(8,9,24,0.82)' : 'rgba(13,14,31,0.9)',
         border: `1px solid ${isAssistant ? 'rgba(245,158,11,0.22)' : T.BORDER}`,
         borderRadius: isAssistant ? '2px 12px 12px 12px' : '12px 2px 12px 12px',
         padding: '12px 16px',
@@ -66,7 +171,6 @@ export function MessageBubble({ role, content, isStreaming }) {
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Subtle amber shimmer top */}
         {isAssistant && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: 1,
@@ -84,16 +188,22 @@ export function MessageBubble({ role, content, isStreaming }) {
             <div style={{ width: 4, height: 4, borderRadius: '50%', background: T.SUCCESS, boxShadow: `0 0 6px ${T.SUCCESS}` }} />
           </div>
         )}
-        <p style={{
-          margin: 0, fontSize: 14, lineHeight: 1.7,
-          color: isAssistant ? T.TEXT1 : T.TEXT2,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          fontWeight: 400,
-        }}>
-          {content || (isStreaming && '')}
-          {isAssistant && isStreaming && <StreamingCursor />}
-        </p>
+
+        {isAssistant ? (
+          <div style={{ fontSize: 14, lineHeight: 1.7, color: T.TEXT1, wordBreak: 'break-word' }}>
+            <ReactMarkdown components={mdComponents}>
+              {content || ''}
+            </ReactMarkdown>
+            {isStreaming && <StreamingCursor />}
+          </div>
+        ) : (
+          <p style={{
+            margin: 0, fontSize: 14, lineHeight: 1.7,
+            color: T.TEXT2, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {content}
+          </p>
+        )}
       </div>
     </motion.div>
   );

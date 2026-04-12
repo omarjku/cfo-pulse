@@ -144,7 +144,7 @@ export function useConversation({ onSave } = {}) {
                 const parsed = JSON.parse(errMsg);
                 errMsg = parsed?.error?.message || parsed?.message || errMsg;
               } catch { /* plain text */ }
-              setAssistantContent(`⚠️ ${errMsg}`);
+              setAssistantContent(`Error: ${errMsg}`);
             }
           } catch { /* partial JSON fragment — next chunk will complete it */ }
         }
@@ -177,7 +177,7 @@ export function useConversation({ onSave } = {}) {
 
     } catch (err) {
       newPdfDocs.forEach((d) => sentDocIdsRef.current.delete(d.id));
-      setAssistantContent(`⚠️ ${err.message}`);
+      setAssistantContent(`Error: ${err.message}`);
     } finally {
       setStreaming(false);
     }
