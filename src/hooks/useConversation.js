@@ -64,11 +64,15 @@ export function useConversation({ onSave } = {}) {
       (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && !sentDocIdsRef.current.has(d.id)
     );
 
-    // For PDFs already sent: use summary (generated async after upload).
-    // Fall back to a placeholder if summary is still pending — better than silence.
+    // Previously-sent PDFs whose summary hasn't arrived yet — resend raw so Claude can still read them
+    const pendingSummaryPdfs = documents.filter(
+      (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && sentDocIdsRef.current.has(d.id) && !d.summary
+    );
+
+    // For PDFs already sent AND summarized: use the condensed fact sheet (cheap follow-up context)
     const existingSummaries = documents
-      .filter((d) => d.ext === 'pdf' && d.status === 'ready' && sentDocIdsRef.current.has(d.id))
-      .map((d) => d.summary || `**${d.name}** — previously provided; summary still generating.`);
+      .filter((d) => d.ext === 'pdf' && d.status === 'ready' && sentDocIdsRef.current.has(d.id) && d.summary)
+      .map((d) => d.summary);
 
     // Cap history to 6 messages and strip the JSON dashboard block from assistant content
     // to keep follow-up requests well under the per-minute token budget
@@ -101,7 +105,7 @@ export function useConversation({ onSave } = {}) {
         body: JSON.stringify({
           messages: history,
           documentContext,
-          pdfDocuments: newPdfDocs.map((d) => ({ data: d.base64 })),
+          pdfDocuments: [...newPdfDocs, ...pendingSummaryPdfs].map((d) => ({ data: d.base64 })),
           documentSummaries: existingSummaries,
         }),
       });
@@ -145,8 +149,10 @@ export function useConversation({ onSave } = {}) {
             } else if (event.type === 'done') {
               const json = extractJsonBlock(fullText);
               if (json) {
-                freshAnalysis = { ...analysis, ...json };
-                setAnalysis(freshAnalysis);
+                setAnalysis((prev) => {
+                  freshAnalysis = { ...prev, ...json };
+                  return freshAnalysis;
+                });
                 setAssistantContent(stripJsonBlock(fullText));
               }
 
