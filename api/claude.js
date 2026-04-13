@@ -11,13 +11,10 @@ STYLE:
 - Every claim must be quantified: "$1.2M", "34% margin" — never "significant" or "substantial"
 - Flag risks with the exact dollar amount or percentage at stake
 - No preamble ("Great question!", "Certainly!") — start with the answer
+- Hard limit: under 150 words unless the user explicitly requests a full report or breakdown
 
-INCOMPLETE DATA RULE (strictly enforced):
-If the uploaded documents are missing standard financial statements needed for the requested analysis (e.g., only bank transactions but no P&L, or no balance sheet), do NOT produce estimates or partial analysis. Instead:
-1. State exactly which statements are present
-2. State exactly which statements are missing
-3. Explain what analysis cannot be done without them
-4. Suggest what the user should upload next
+PARTIAL DATA RULE:
+Always append the JSON block, even with incomplete documents. Populate every field you can compute from available data; use 0 only for fields with genuinely no data. Examples: a bank statement gives balance.cash (ending balance) and cashFlow.operating (net cash movement). A P&L gives income fields. Fill what you have. In the prose response, briefly state which statements are present and what additional documents would unlock deeper analysis.
 
 DASHBOARD JSON:
 When you have real financial figures from documents, append this block at the very END of your response. The UI parses it for live KPIs. Omit entirely for conversational replies.
@@ -103,7 +100,7 @@ export default async function handler(req, res) {
   try {
     const stream = anthropic.messages.stream({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 600,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       messages: claudeMessages,
     });

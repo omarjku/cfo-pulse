@@ -121,6 +121,7 @@ export function useConversation({ onSave } = {}) {
       const decoder = new TextDecoder();
       let fullText = '';
       let lineBuffer = '';
+      let freshAnalysis = null; // capture new analysis inline to avoid stale closure
 
       while (true) {
         const { done, value } = await reader.read();
@@ -144,7 +145,8 @@ export function useConversation({ onSave } = {}) {
             } else if (event.type === 'done') {
               const json = extractJsonBlock(fullText);
               if (json) {
-                setAnalysis((prev) => ({ ...prev, ...json }));
+                freshAnalysis = { ...analysis, ...json };
+                setAnalysis(freshAnalysis);
                 setAssistantContent(stripJsonBlock(fullText));
               }
 
@@ -182,7 +184,7 @@ export function useConversation({ onSave } = {}) {
       // Save to local history
       if (onSave) {
         const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: stripJsonBlock(fullText) }];
-        onSave(convIdRef.current, text.slice(0, 60), finalMessages, analysis);
+        onSave(convIdRef.current, text.slice(0, 60), finalMessages, freshAnalysis ?? analysis);
       }
 
     } catch (err) {
@@ -191,7 +193,7 @@ export function useConversation({ onSave } = {}) {
     } finally {
       setStreaming(false);
     }
-  }, [messages, streaming, supabaseConvId, analysis, onSave]);
+  }, [messages, streaming, supabaseConvId, onSave]);
 
   const clear = () => {
     setMessages([]);

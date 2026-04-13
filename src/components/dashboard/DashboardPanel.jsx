@@ -17,7 +17,10 @@ export function DashboardPanel({ analysis }) {
     period: 'Annual',
   });
 
-  const hasData = (income?.revenue || 0) > 0;
+  const hasData =
+    (income?.revenue || 0) > 0 ||
+    (balance?.cash || 0) > 0 ||
+    Math.abs(cashFlow?.operating || 0) > 0;
 
   return (
     <div style={{

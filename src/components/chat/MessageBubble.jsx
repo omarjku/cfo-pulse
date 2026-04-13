@@ -32,6 +32,21 @@ function UserAvatar() {
   );
 }
 
+function TypingDots() {
+  const dot = (delay) => ({
+    width: 7, height: 7, borderRadius: '50%', background: '#f59e0b',
+    animation: `cfoBounce 0.9s ${delay}s ease-in-out infinite`,
+  });
+  return (
+    <>
+      <style>{`@keyframes cfoBounce{0%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-4px);opacity:1}}`}</style>
+      <div style={{ display: 'flex', gap: 5, alignItems: 'center', padding: '4px 2px' }}>
+        <div style={dot(0)} /><div style={dot(0.12)} /><div style={dot(0.24)} />
+      </div>
+    </>
+  );
+}
+
 // Markdown component overrides — styled to match the dark theme
 const mdComponents = {
   p({ children }) {
@@ -191,10 +206,14 @@ export function MessageBubble({ role, content, isStreaming }) {
 
         {isAssistant ? (
           <div style={{ fontSize: 14, lineHeight: 1.7, color: T.TEXT1, wordBreak: 'break-word' }}>
-            <ReactMarkdown components={mdComponents}>
-              {content || ''}
-            </ReactMarkdown>
-            {isStreaming && <StreamingCursor />}
+            {isStreaming && !content ? (
+              <TypingDots />
+            ) : (
+              <>
+                <ReactMarkdown components={mdComponents}>{content || ''}</ReactMarkdown>
+                {isStreaming && <StreamingCursor />}
+              </>
+            )}
           </div>
         ) : (
           <p style={{
