@@ -173,8 +173,8 @@ export function useConversation({ onSave } = {}) {
       }
 
       // Persist to Supabase
+      let cid = supabaseConvId;
       if (supabase) {
-        let cid = supabaseConvId;
         if (!cid) {
           const { data } = await supabase
             .from('conversations')

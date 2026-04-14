@@ -7,7 +7,6 @@ export function HealthGauge({ score }) {
   const rad = Math.PI - (score / 100) * Math.PI;
   const ex = 90 + 70 * Math.cos(rad);
   const ey = 90 - 70 * Math.sin(rad);
-  const largeArc = score > 50 ? 1 : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -15,7 +14,7 @@ export function HealthGauge({ score }) {
         <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke={T.BORDER} strokeWidth="12" strokeLinecap="round" />
         {score > 0 && (
           <motion.path
-            d={`M 20 90 A 70 70 0 ${largeArc} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`}
+            d={`M 20 90 A 70 70 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`}
             fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
             initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
             transition={{ duration: 1.2, ease: 'easeOut' }}
