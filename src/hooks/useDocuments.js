@@ -55,7 +55,18 @@ export function useDocuments() {
       let text = '';
       if (isPDF) {
         base64 = await readAsBase64(file);
-        text = `[PDF Document: ${file.name}]`;
+        // Extract text server-side so PDFs get chunked and stored in Supabase RAG
+        try {
+          const extractRes = await fetch('/api/extract-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pdfBase64: base64, fileName: file.name }),
+          });
+          const extracted = await extractRes.json();
+          text = extracted.text || `[PDF Document: ${file.name}]`;
+        } catch {
+          text = `[PDF Document: ${file.name}]`;
+        }
       } else {
         text = await readSpreadsheetAsText(file);
       }

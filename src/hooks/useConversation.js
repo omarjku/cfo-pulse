@@ -146,6 +146,10 @@ export function useConversation({ onSave } = {}) {
               fullText += event.text;
               setAssistantContent(fullText);
 
+            } else if (event.type === 'tool_start') {
+              fullText += `\n\n*Searching the web for "${event.query}"...*\n\n`;
+              setAssistantContent(fullText);
+
             } else if (event.type === 'done') {
               const json = extractJsonBlock(fullText);
               if (json) {
@@ -187,10 +191,10 @@ export function useConversation({ onSave } = {}) {
         }
       }
 
-      // Save to local history
+      // Save to local history — prefer Supabase UUID so restore can refetch from DB
       if (onSave) {
         const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: stripJsonBlock(fullText) }];
-        onSave(convIdRef.current, text.slice(0, 60), finalMessages, freshAnalysis ?? analysis);
+        onSave(cid || convIdRef.current, text.slice(0, 60), finalMessages, freshAnalysis ?? analysis);
       }
 
     } catch (err) {
@@ -209,12 +213,34 @@ export function useConversation({ onSave } = {}) {
     convIdRef.current = null;
   };
 
-  const restore = (savedMessages, savedAnalysis) => {
-    setMessages(savedMessages);
-    setAnalysis(savedAnalysis || EMPTY_ANALYSIS);
-    setSupabaseConvId(null);
+  const restore = async (id, savedMessages, savedAnalysis) => {
     sentDocIdsRef.current = new Set();
     convIdRef.current = null;
+
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (isUUID && supabase) {
+      setSupabaseConvId(id);
+      const { data } = await supabase
+        .from('messages')
+        .select('role, content')
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: true });
+      if (data) {
+        const msgs = data.map((m, i) => ({ id: i, role: m.role, content: m.content }));
+        setMessages(msgs);
+        const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
+        if (lastAssistant) {
+          const json = extractJsonBlock(lastAssistant.content);
+          setAnalysis(json ? { ...EMPTY_ANALYSIS, ...json } : EMPTY_ANALYSIS);
+        } else {
+          setAnalysis(EMPTY_ANALYSIS);
+        }
+      }
+    } else {
+      setSupabaseConvId(null);
+      setMessages(savedMessages || []);
+      setAnalysis(savedAnalysis || EMPTY_ANALYSIS);
+    }
   };
 
   return { messages, streaming, analysis, send, clear, restore };

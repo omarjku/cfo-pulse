@@ -34,7 +34,7 @@ export function AppShell({ user, onLogout }) {
   };
 
   const handleLoadHistory = (item) => {
-    restore(item.messages, item.analysis);
+    restore(item.id, item.messages, item.analysis);
     setActiveConvId(item.id);
   };
 

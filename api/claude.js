@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 4096;
 
 const SYSTEM_PROMPT = `You are CFO-Pulse, a senior financial advisor. Communicate like a CFO texting a founder — direct, precise, brief.
 
@@ -22,6 +23,18 @@ When you have real financial figures from documents, append this block at the ve
 \`\`\`json
 {"healthScore":75,"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[],"analysis":{"executiveSummary":"","riskFactors":[],"strengths":[],"recommendations":[]}}
 \`\`\``;
+
+const webSearchTool = {
+  name: 'web_search',
+  description: 'Search the web for current financial data, market rates, industry benchmarks, or news relevant to the financial analysis.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'The search query' },
+    },
+    required: ['query'],
+  },
+};
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -97,19 +110,84 @@ export default async function handler(req, res) {
     if (typeof res.flush === 'function') res.flush();
   };
 
-  try {
-    const stream = anthropic.messages.stream({
-      model: MODEL,
-      max_tokens: 600,
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: claudeMessages,
-    });
+  // Build base URL for internal API calls — use forwarded headers for Vercel
+  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+  const baseUrl = `${protocol}://${host}`;
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-        sendEvent({ type: 'text', text: event.delta.text });
-      } else if (event.type === 'message_stop') {
-        sendEvent({ type: 'done' });
+  try {
+    let continueLoop = true;
+    let loopMessages = [...claudeMessages];
+    let toolUseBlock = null;
+
+    while (continueLoop) {
+      const stream = anthropic.messages.stream({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+        messages: loopMessages,
+        tools: [webSearchTool],
+      });
+
+      let inputJson = '';
+      let currentToolUse = null;
+      let stopReason = null;
+
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta') {
+          if (event.delta.type === 'text_delta') {
+            sendEvent({ type: 'text', text: event.delta.text });
+          } else if (event.delta.type === 'input_json_delta') {
+            inputJson += event.delta.partial_json;
+          }
+        } else if (event.type === 'content_block_start') {
+          if (event.content_block.type === 'tool_use') {
+            currentToolUse = { id: event.content_block.id, name: event.content_block.name };
+            inputJson = '';
+          }
+        } else if (event.type === 'content_block_stop' && currentToolUse) {
+          toolUseBlock = { ...currentToolUse, input: JSON.parse(inputJson || '{}') };
+          currentToolUse = null;
+        } else if (event.type === 'message_delta') {
+          // Capture stop_reason here — message_stop event doesn't carry it
+          stopReason = event.delta?.stop_reason;
+        } else if (event.type === 'message_stop') {
+          if (stopReason === 'tool_use' && toolUseBlock) {
+            sendEvent({ type: 'tool_start', tool: toolUseBlock.name, query: toolUseBlock.input.query });
+
+            let toolResult = '';
+            try {
+              const searchRes = await fetch(`${baseUrl}/api/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: toolUseBlock.input.query }),
+              });
+              const searchData = await searchRes.json();
+              toolResult = searchData.results
+                .map((r) => `${r.title}\n${r.url}\n${r.content}`)
+                .join('\n\n---\n\n');
+            } catch {
+              toolResult = 'Search unavailable.';
+            }
+
+            // Append tool exchange and re-enter loop
+            loopMessages = [
+              ...loopMessages,
+              {
+                role: 'assistant',
+                content: [{ type: 'tool_use', id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input }],
+              },
+              {
+                role: 'user',
+                content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: toolResult }],
+              },
+            ];
+            toolUseBlock = null;
+          } else {
+            continueLoop = false;
+            sendEvent({ type: 'done' });
+          }
+        }
       }
     }
   } catch (err) {
