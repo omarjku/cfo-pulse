@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import { Code2, Copy, ExternalLink, Check } from 'lucide-react';
 import { StreamingCursor } from './StreamingCursor';
 import { RichResponse } from './RichResponse';
 import { T } from '../../lib/tokens';
@@ -29,6 +31,76 @@ function UserAvatar() {
       fontSize: 11, fontWeight: 700, color: T.TEXT2, letterSpacing: '0.5px',
     }}>
       U
+    </div>
+  );
+}
+
+const toolbarBtn = {
+  background: 'transparent',
+  border: `1px solid ${T.BORDER}`,
+  borderRadius: 4,
+  padding: '3px 6px',
+  color: T.TEXT2,
+  cursor: 'pointer',
+  display: 'flex', alignItems: 'center',
+  transition: 'color 0.15s, border-color 0.15s',
+};
+
+function HtmlArtifact({ html }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(html);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch { /* clipboard blocked in some contexts */ }
+  };
+
+  const handleExpand = () => {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  return (
+    <div style={{
+      margin: '10px 0',
+      border: `1px solid ${T.BORDER}`,
+      borderRadius: 8,
+      overflow: 'hidden',
+      background: T.SURFACE,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px',
+        background: 'rgba(245,158,11,0.06)',
+        borderBottom: `1px solid ${T.BORDER}`,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: 10, fontWeight: 800, letterSpacing: '1.5px',
+          color: T.AMBER, fontFamily: 'monospace',
+        }}>
+          <Code2 size={11} />
+          ARTIFACT
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={handleCopy} title="Copy HTML" style={toolbarBtn}>
+            {copied ? <Check size={12} color={T.SUCCESS} /> : <Copy size={12} />}
+          </button>
+          <button onClick={handleExpand} title="Open in new tab" style={toolbarBtn}>
+            <ExternalLink size={12} />
+          </button>
+        </div>
+      </div>
+      <iframe
+        srcDoc={html}
+        sandbox="allow-scripts"
+        title="artifact"
+        style={{ display: 'block', width: '100%', height: 480, border: 'none', background: '#0f1117' }}
+      />
     </div>
   );
 }
@@ -81,7 +153,7 @@ const mdComponents = {
   li({ children }) {
     return <li style={{ fontSize: 14, color: T.TEXT1, lineHeight: 1.65 }}>{children}</li>;
   },
-  code({ inline, children }) {
+  code({ inline, className, children }) {
     if (inline) {
       return (
         <code style={{
@@ -96,6 +168,12 @@ const mdComponents = {
           {children}
         </code>
       );
+    }
+    const raw = String(children).replace(/\n$/, '');
+    const isHtmlLang = className === 'language-html' || className === 'lang-html';
+    const isFullDoc = /^\s*(<!DOCTYPE\s+html|<html[\s>])/i.test(raw);
+    if (isHtmlLang && isFullDoc) {
+      return <HtmlArtifact html={raw} />;
     }
     return (
       <pre style={{
