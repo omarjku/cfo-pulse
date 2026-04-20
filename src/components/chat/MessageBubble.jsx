@@ -153,8 +153,34 @@ const mdComponents = {
   li({ children }) {
     return <li style={{ fontSize: 14, color: T.TEXT1, lineHeight: 1.65 }}>{children}</li>;
   },
-  code({ inline, className, children }) {
-    if (inline) {
+  // react-markdown v9: override `pre` to intercept block code (artifact detection lives here)
+  pre({ children }) {
+    const child = Array.isArray(children) ? children[0] : children;
+    const { className = '', children: codeChildren } = child?.props || {};
+    const raw = String(codeChildren ?? '').replace(/\n$/, '');
+    const isHtmlLang = className === 'language-html' || className === 'lang-html';
+    const isFullDoc = /^\s*(<!DOCTYPE\s+html|<html[\s>])/i.test(raw);
+    if (isHtmlLang && isFullDoc) return <HtmlArtifact html={raw} />;
+    return (
+      <pre style={{
+        background: 'rgba(5,6,15,0.7)',
+        border: `1px solid ${T.BORDER}`,
+        borderRadius: 6,
+        padding: '10px 14px',
+        margin: '8px 0',
+        overflowX: 'auto',
+        fontSize: 12,
+        fontFamily: 'monospace',
+        color: T.TEXT2,
+        lineHeight: 1.6,
+      }}>
+        {children}
+      </pre>
+    );
+  },
+  // `code` handles inline (no className) and block interior (has className, inside pre above)
+  code({ className, children }) {
+    if (!className) {
       return (
         <code style={{
           background: 'rgba(245,158,11,0.12)',
@@ -169,28 +195,7 @@ const mdComponents = {
         </code>
       );
     }
-    const raw = String(children).replace(/\n$/, '');
-    const isHtmlLang = className === 'language-html' || className === 'lang-html';
-    const isFullDoc = /^\s*(<!DOCTYPE\s+html|<html[\s>])/i.test(raw);
-    if (isHtmlLang && isFullDoc) {
-      return <HtmlArtifact html={raw} />;
-    }
-    return (
-      <pre style={{
-        background: 'rgba(5,6,15,0.7)',
-        border: `1px solid ${T.BORDER}`,
-        borderRadius: 6,
-        padding: '10px 14px',
-        margin: '8px 0',
-        overflowX: 'auto',
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: T.TEXT2,
-        lineHeight: 1.6,
-      }}>
-        <code>{children}</code>
-      </pre>
-    );
+    return <code style={{ fontFamily: 'monospace', fontSize: 12 }}>{children}</code>;
   },
   blockquote({ children }) {
     return (
