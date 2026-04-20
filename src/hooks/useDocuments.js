@@ -141,7 +141,11 @@ export function useDocuments() {
       }
 
       setDocuments((prev) =>
-        prev.map((d) => d.id === docId ? { ...d, id: dbId, base64, mimeType, text, status: 'ready' } : d)
+        prev.map((d) => d.id === docId ? {
+          ...d, id: dbId, base64, mimeType, text, status: 'ready',
+          // Keep raw File reference for spreadsheets so analysisOrchestrator can call arrayBuffer()
+          ...(isSheet ? { _file: file } : {}),
+        } : d)
       );
 
       // Async summary for non-image documents

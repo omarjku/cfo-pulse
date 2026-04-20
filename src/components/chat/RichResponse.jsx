@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import ReactMarkdown from 'react-markdown';
 import { DocumentTimeline } from './DocumentTimeline';
 import { StructuredTable } from './StructuredTable';
 import { InlineChart } from './InlineChart';
@@ -15,10 +14,135 @@ const SECTION_VARIANTS = {
   }),
 };
 
+function fmt(value, format) {
+  if (value == null) return '—';
+  if (format === 'currency') return Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (format === 'percent')  return `${(Number(value) * (Math.abs(value) <= 1 ? 100 : 1)).toFixed(1)}%`;
+  if (format === 'number')   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return String(value);
+}
+
+function SectionLabel({ children }) {
+  return (
+    <p style={{
+      fontSize: 10, fontWeight: 800, color: T.AMBER,
+      fontFamily: 'monospace', letterSpacing: '1.5px', marginBottom: 8, margin: '0 0 8px',
+    }}>
+      {children}
+    </p>
+  );
+}
+
+function KpiGrid({ kpis }) {
+  if (!kpis?.length) return null;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <SectionLabel>KEY METRICS</SectionLabel>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+        gap: 8,
+      }}>
+        {kpis.slice(0, 8).map((kpi, i) => (
+          <div key={i} style={{
+            background: T.SURFACE2,
+            border: `1px solid ${T.BORDER}`,
+            borderRadius: 6,
+            padding: '8px 10px',
+          }}>
+            <p style={{ fontSize: 10, color: T.TEXT3, fontFamily: 'monospace', letterSpacing: '0.5px', margin: '0 0 3px', textTransform: 'uppercase' }}>
+              {kpi.label}
+            </p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: T.TEXT1, margin: 0, lineHeight: 1.2 }}>
+              {fmt(kpi.value, kpi.format)}
+            </p>
+            {kpi.source && (
+              <p style={{ fontSize: 9, color: T.TEXT3, margin: '2px 0 0', fontFamily: 'monospace' }}>
+                {kpi.source}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ImpliedPL({ pl }) {
+  if (!pl) return null;
+  const hasData = pl.revenue != null || pl.netIncome != null;
+  if (!hasData) return null;
+
+  const netPositive = pl.netIncome != null && pl.netIncome >= 0;
+  const netColor    = pl.netIncome == null ? T.TEXT2 : netPositive ? T.SUCCESS : T.DANGER;
+
+  const rows = [
+    { label: 'Revenue',             value: pl.revenue,            indent: false, bold: false },
+    { label: 'Cost of Goods Sold',  value: pl.cogs != null ? -Math.abs(pl.cogs) : null, indent: true, bold: false },
+    { label: 'Gross Profit',        value: pl.grossProfit,        indent: false, bold: true,
+      suffix: pl.grossMarginPct != null ? ` (${(pl.grossMarginPct * 100).toFixed(1)}%)` : '' },
+    { label: 'Operating Expenses',  value: pl.operatingExpenses != null ? -Math.abs(pl.operatingExpenses) : null, indent: true, bold: false },
+    { label: 'EBIT',                value: pl.ebit,               indent: false, bold: true },
+    { label: 'Other Income / (Exp)',value: pl.otherIncome,        indent: true,  bold: false },
+    { label: 'Net Income / (Loss)', value: pl.netIncome,          indent: false, bold: true, color: netColor },
+  ].filter(r => r.value != null);
+
+  if (!rows.length) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <SectionLabel>IMPLIED P&amp;L{pl.currency ? ` (${pl.currency})` : ''}</SectionLabel>
+      <div style={{
+        background: T.SURFACE2,
+        border: `1px solid ${T.BORDER}`,
+        borderRadius: 6,
+        overflow: 'hidden',
+      }}>
+        {rows.map((row, i) => (
+          <div key={i} style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '6px 12px',
+            borderTop: i > 0 ? `1px solid ${T.BORDER}` : 'none',
+            background: row.bold ? 'rgba(245,158,11,0.04)' : 'transparent',
+          }}>
+            <span style={{
+              fontSize: 12,
+              color: row.color || (row.bold ? T.TEXT1 : T.TEXT2),
+              fontWeight: row.bold ? 700 : 400,
+              paddingLeft: row.indent ? 12 : 0,
+              fontFamily: row.indent ? 'inherit' : 'monospace',
+            }}>
+              {row.label}
+            </span>
+            <span style={{
+              fontSize: 13,
+              fontWeight: row.bold ? 700 : 400,
+              color: row.color || (row.value < 0 ? T.DANGER : row.bold ? T.TEXT1 : T.TEXT2),
+              fontFamily: 'monospace',
+            }}>
+              {row.value < 0
+                ? `(${Math.abs(row.value).toLocaleString(undefined, { maximumFractionDigits: 0 })})`
+                : row.value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+              }{row.suffix || ''}
+            </span>
+          </div>
+        ))}
+      </div>
+      {pl.note && (
+        <p style={{ fontSize: 10, color: T.TEXT3, fontFamily: 'monospace', margin: '4px 0 0', fontStyle: 'italic' }}>
+          {pl.note}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function RichResponse({ rich }) {
   if (!rich) return null;
 
-  const { narrative, document_timelines, tables, charts, flags, actions } = rich;
+  const { narrative, document_timelines, tables, charts, flags, actions, kpiSummary, impliedPL } = rich;
 
   return (
     <div>
@@ -29,47 +153,56 @@ export function RichResponse({ rich }) {
         </motion.div>
       )}
 
-      {/* 2. Narrative */}
+      {/* 2. KPI Summary grid */}
+      {kpiSummary?.length > 0 && (
+        <motion.div custom={1} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
+          <KpiGrid kpis={kpiSummary} />
+        </motion.div>
+      )}
+
+      {/* 3. Narrative */}
       {narrative && (
-        <motion.div custom={1} variants={SECTION_VARIANTS} initial="hidden" animate="visible"
+        <motion.div custom={2} variants={SECTION_VARIANTS} initial="hidden" animate="visible"
           style={{ marginBottom: 16 }}
         >
-          <p style={{
-            fontSize: 10, fontWeight: 800, color: T.AMBER,
-            fontFamily: 'monospace', letterSpacing: '1.5px', marginBottom: 6,
-          }}>
-            EXECUTIVE SUMMARY
-          </p>
+          <SectionLabel>EXECUTIVE SUMMARY</SectionLabel>
           <p style={{ fontSize: 14, color: T.TEXT1, lineHeight: 1.7, margin: 0 }}>
             {narrative}
           </p>
         </motion.div>
       )}
 
-      {/* 3. Tables */}
+      {/* 4. Implied P&L */}
+      {impliedPL && (
+        <motion.div custom={3} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
+          <ImpliedPL pl={impliedPL} />
+        </motion.div>
+      )}
+
+      {/* 5. Tables */}
       {tables?.filter((t) => t.headers?.length > 0).map((table, i) => (
-        <motion.div key={i} custom={2 + i} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
+        <motion.div key={i} custom={4 + i} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
           <StructuredTable {...table} />
         </motion.div>
       ))}
 
-      {/* 4. Charts */}
+      {/* 6. Charts */}
       {charts?.filter((c) => c.labels?.length > 0).map((chart, i) => (
-        <motion.div key={i} custom={3 + i} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
+        <motion.div key={i} custom={5 + i} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
           <InlineChart {...chart} />
         </motion.div>
       ))}
 
-      {/* 5. Flags */}
+      {/* 7. Flags */}
       {flags?.length > 0 && (
-        <motion.div custom={4} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
+        <motion.div custom={6} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
           <FlagsList flags={flags} />
         </motion.div>
       )}
 
-      {/* 6. Actions */}
+      {/* 8. Actions */}
       {actions?.length > 0 && (
-        <motion.div custom={5} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
+        <motion.div custom={7} variants={SECTION_VARIANTS} initial="hidden" animate="visible">
           <ActionsList actions={actions} />
         </motion.div>
       )}
