@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { retrieveChunks } from './useRAG';
 import { parseRichResponse, isRich, stripJsonBlock } from '../lib/responseSchema';
+import { runFinancialAnalysis, isSpreadsheet } from '../lib/analysisOrchestrator';
 
 const EMPTY_ANALYSIS = {
   healthScore: 0,
@@ -91,6 +92,52 @@ export function useConversation({ onSave } = {}) {
       }));
 
     newPdfDocs.forEach((d) => sentDocIdsRef.current.add(d.id));
+
+    // ── Financial analysis pipeline ───────────────────────────────────────
+    // If any ready document is a spreadsheet, bypass the chat API and run
+    // the full extract → analyze → synthesize pipeline instead.
+    const spreadsheetFiles = documents
+      .filter((d) => d.status === 'ready' && d._file && isSpreadsheet(d.name))
+      .map((d) => d._file);
+
+    if (spreadsheetFiles.length > 0) {
+      try {
+        const rich = await runFinancialAnalysis(spreadsheetFiles);
+        setAnalysis((prev) => ({ ...prev, ...rich }));
+        const narrative = rich.narrative || '';
+        setAssistantContent(narrative, rich);
+
+        // Persist to Supabase
+        let cid = supabaseConvId;
+        if (supabase) {
+          if (!cid) {
+            const { data } = await supabase
+              .from('conversations')
+              .insert({ title: text.slice(0, 60) })
+              .select('id')
+              .single();
+            if (data) { cid = data.id; setSupabaseConvId(cid); }
+          }
+          if (cid) {
+            await supabase.from('messages').insert([
+              { conversation_id: cid, role: 'user',      content: text },
+              { conversation_id: cid, role: 'assistant', content: narrative },
+            ]);
+          }
+        }
+
+        if (onSave) {
+          const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: narrative, rich }];
+          onSave(cid || convIdRef.current, text.slice(0, 60), finalMessages, rich);
+        }
+      } catch (err) {
+        setAssistantContent(`Analysis error: ${err.message}`);
+      } finally {
+        setStreaming(false);
+      }
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     try {
       const response = await fetch('/api/claude', {
