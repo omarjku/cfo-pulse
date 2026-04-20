@@ -17,11 +17,20 @@ STYLE:
 PARTIAL DATA RULE:
 Always append the JSON block, even with incomplete documents. Populate every field you can compute from available data; use 0 only for fields with genuinely no data. Examples: a bank statement gives balance.cash (ending balance) and cashFlow.operating (net cash movement). A P&L gives income fields. Fill what you have. In the prose response, briefly state which statements are present and what additional documents would unlock deeper analysis.
 
-DASHBOARD JSON:
-When you have real financial figures from documents, append this block at the very END of your response. The UI parses it for live KPIs. Omit entirely for conversational replies.
+ANALYSIS JSON:
+When you have real financial figures from documents, append this block at the very END of your response. Omit entirely for conversational replies with no financial data.
+
+Rules for the new fields:
+- narrative: 3-5 sentence executive summary of the analysis.
+- document_timelines: one entry per uploaded document. Set date_range_start/date_range_end to ISO dates (YYYY-MM-DD) if detectable from the document content; use null if not found. description is one line describing what the document contains.
+- tables: extract key financial tables (e.g. income summary, cash flow summary). headers is the column header row. rows is an array of value arrays matching the headers.
+- charts: line for trends over time, bar for comparisons, pie for composition. labels = X-axis labels or segment names. datasets = one object per series with label and data arrays of equal length to labels.
+- flags: bullet-point risks or critical insights, each quantified (e.g. "Burn rate $180K/mo -- runway 4.2 months").
+- actions: concrete recommended next steps.
+- All existing KPI fields (healthScore, income, balance, cashFlow, prior, monthlyTrend, analysis) are REQUIRED alongside the new fields so the dashboard panel keeps working.
 
 \`\`\`json
-{"healthScore":75,"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[],"analysis":{"executiveSummary":"","riskFactors":[],"strengths":[],"recommendations":[]}}
+{"narrative":"","document_timelines":[{"filename":"","date_range_start":null,"date_range_end":null,"description":""}],"tables":[{"title":"","headers":[],"rows":[]}],"charts":[{"title":"","type":"line","labels":[],"datasets":[{"label":"","data":[]}]}],"flags":[],"actions":[],"healthScore":0,"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[],"analysis":{"executiveSummary":"","riskFactors":[],"strengths":[],"recommendations":[]}}
 \`\`\``;
 
 const webSearchTool = {
@@ -47,7 +56,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: { message: 'ANTHROPIC_API_KEY is not configured on the server. Set it in your Vercel project settings (or .env.local for local dev).' } });
 
-  const { messages, documentContext, pdfDocuments, documentSummaries } = req.body;
+  const { messages, documentContext, pdfDocuments, documentSummaries, imageDocuments } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
   const anthropic = new Anthropic({ apiKey });
@@ -56,6 +65,7 @@ export default async function handler(req, res) {
   const claudeMessages = [];
   const hasContext =
     (pdfDocuments?.length > 0) ||
+    (imageDocuments?.length > 0) ||
     (documentSummaries?.length > 0) ||
     documentContext;
 
@@ -69,6 +79,16 @@ export default async function handler(req, res) {
           type: 'document',
           source: { type: 'base64', media_type: 'application/pdf', data: pdf.data },
           cache_control: { type: 'ephemeral' },
+        });
+      }
+    }
+
+    // Images (PNG, JPG, JPEG, WEBP, GIF) sent as image content blocks
+    if (imageDocuments?.length > 0) {
+      for (const img of imageDocuments) {
+        contextContent.push({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mimeType, data: img.data },
         });
       }
     }

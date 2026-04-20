@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { Upload } from 'lucide-react';
 import { T } from '../../lib/tokens';
 
+const ACCEPT = '.pdf,.xlsx,.xls,.csv,.docx,.txt,.png,.jpg,.jpeg,.webp,.gif';
+
 export function UploadZone({ onFiles, disabled }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef();
@@ -26,13 +28,14 @@ export function UploadZone({ onFiles, disabled }) {
       }}
     >
       <Upload size={14} color={T.AMBER} style={{ margin: '0 auto 4px' }} />
-      <p style={{ fontSize: 10, color: T.TEXT3, margin: 0, lineHeight: 1.4 }}>
+      <p style={{ fontSize: 10, color: T.TEXT3, margin: 0, lineHeight: 1.5 }}>
         Drop files<br />
-        <span style={{ color: T.AMBER, fontSize: 9 }}>PDF, XLSX, CSV</span>
+        <span style={{ color: T.AMBER, fontSize: 9 }}>PDF · XLSX · CSV · DOCX · TXT</span><br />
+        <span style={{ color: T.TEXT3, fontSize: 9 }}>PNG · JPG · WEBP · GIF</span>
       </p>
       <input
         ref={inputRef} type="file" multiple hidden
-        accept=".pdf,.xlsx,.xls,.csv"
+        accept={ACCEPT}
         onChange={(e) => handleFiles(e.target.files)}
       />
     </motion.div>
