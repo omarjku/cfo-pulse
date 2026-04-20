@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 4096;
+const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 8192;
 
 const SYSTEM_PROMPT = `You are CFO-Pulse, a senior financial advisor. Communicate like a CFO texting a founder — direct, precise, brief.
 
