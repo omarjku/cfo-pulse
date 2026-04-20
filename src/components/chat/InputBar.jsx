@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Paperclip, SendHorizontal } from 'lucide-react';
 import { T } from '../../lib/tokens';
+import { FileTypeBadge } from '../documents/FileTypeBadge';
 
 export function InputBar({ onSend, onAttach, streaming, attachedDocs = [] }) {
   const [text, setText] = useState('');
@@ -41,12 +42,13 @@ export function InputBar({ onSend, onAttach, streaming, attachedDocs = [] }) {
           >
             {attachedDocs.map((doc) => (
               <div key={doc.id} style={{
-                display: 'flex', alignItems: 'center', gap: 4,
+                display: 'flex', alignItems: 'center', gap: 5,
                 background: T.SURFACE2, border: `1px solid ${T.BORDER_A}`,
                 borderRadius: 6, padding: '3px 8px', fontSize: 11, color: T.AMBER,
               }}>
                 <Paperclip size={10} />
-                <span>{doc.name}</span>
+                <FileTypeBadge ext={doc.ext} />
+                <span style={{ color: T.TEXT2, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</span>
               </div>
             ))}
           </motion.div>

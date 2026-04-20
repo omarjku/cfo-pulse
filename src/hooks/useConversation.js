@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { retrieveChunks } from './useRAG';
+import { parseRichResponse, isRich, stripJsonBlock } from '../lib/responseSchema';
 
 const EMPTY_ANALYSIS = {
   healthScore: 0,
@@ -18,11 +19,6 @@ function extractJsonBlock(text) {
   try { return JSON.parse(match[1]); } catch { return null; }
 }
 
-function stripJsonBlock(text) {
-  return text.replace(/```json\s*[\s\S]*?\s*```/g, '').trim();
-}
-
-// Each conversation gets a unique ID generated on the first send
 function newConvId() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -33,9 +29,7 @@ export function useConversation({ onSave } = {}) {
   const [streaming, setStreaming] = useState(false);
   const [analysis, setAnalysis] = useState(EMPTY_ANALYSIS);
 
-  // Tracks which doc IDs have already been sent as raw PDFs — avoids re-sending each turn
   const sentDocIdsRef = useRef(new Set());
-  // Stable conversation ID for history (created on first send, reset on clear)
   const convIdRef = useRef(null);
 
   const send = useCallback(async ({ text, documents }) => {
@@ -50,37 +44,35 @@ export function useConversation({ onSave } = {}) {
     const docIds = documents.filter((d) => d.status === 'ready').map((d) => d.id);
     const ragContext = await retrieveChunks(text, docIds);
 
-    // Spreadsheets (xlsx/csv) are never sent as document blocks — include their
-    // extracted text directly so Claude can see them even without Supabase RAG.
     const spreadsheetContext = documents
-      .filter((d) => d.status === 'ready' && d.text && d.ext !== 'pdf')
+      .filter((d) => d.status === 'ready' && d.text && d.ext !== 'pdf' && !['png','jpg','jpeg','webp','gif'].includes(d.ext))
       .map((d) => `**${d.name}**\n\n${d.text.slice(0, 8000)}`)
       .join('\n\n---\n\n');
 
     const documentContext = [ragContext, spreadsheetContext].filter(Boolean).join('\n\n---\n\n');
 
-    // New PDFs not yet seen by Claude — send raw for accurate first-read
     const newPdfDocs = documents.filter(
       (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && !sentDocIdsRef.current.has(d.id)
     );
 
-    // Previously-sent PDFs whose summary hasn't arrived yet — resend raw so Claude can still read them
     const pendingSummaryPdfs = documents.filter(
       (d) => d.ext === 'pdf' && d.base64 && d.status === 'ready' && sentDocIdsRef.current.has(d.id) && !d.summary
     );
 
-    // For PDFs already sent AND summarized: use the condensed fact sheet (cheap follow-up context)
     const existingSummaries = documents
       .filter((d) => d.ext === 'pdf' && d.status === 'ready' && sentDocIdsRef.current.has(d.id) && d.summary)
       .map((d) => d.summary);
 
-    // Cap history to 6 messages and strip the JSON dashboard block from assistant content
-    // to keep follow-up requests well under the per-minute token budget
+    // Images are always re-sent each turn (no caching — Claude needs to see them)
+    const imageDocuments = documents
+      .filter((d) => d.status === 'ready' && d.mimeType && d.base64)
+      .map((d) => ({ data: d.base64, mimeType: d.mimeType, name: d.name }));
+
     const MAX_MSG_CHARS = 3000;
     const history = [...messages, userMsg]
       .slice(-6)
       .map(({ role, content }) => {
-        const stripped = stripJsonBlock(content);
+        const stripped = stripJsonBlock(content || '');
         return {
           role,
           content: stripped.length > MAX_MSG_CHARS
@@ -90,12 +82,14 @@ export function useConversation({ onSave } = {}) {
       });
 
     const assistantId = Date.now() + 1;
-    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', rich: null }]);
 
-    const setAssistantContent = (content) =>
-      setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content } : m)));
+    const setAssistantContent = (content, rich = undefined) =>
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== assistantId) return m;
+        return rich !== undefined ? { ...m, content, rich } : { ...m, content };
+      }));
 
-    // Mark new PDFs as sent before the request
     newPdfDocs.forEach((d) => sentDocIdsRef.current.add(d.id));
 
     try {
@@ -107,6 +101,7 @@ export function useConversation({ onSave } = {}) {
           documentContext,
           pdfDocuments: [...newPdfDocs, ...pendingSummaryPdfs].map((d) => ({ data: d.base64 })),
           documentSummaries: existingSummaries,
+          imageDocuments,
         }),
       });
 
@@ -125,7 +120,7 @@ export function useConversation({ onSave } = {}) {
       const decoder = new TextDecoder();
       let fullText = '';
       let lineBuffer = '';
-      let freshAnalysis = null; // capture new analysis inline to avoid stale closure
+      let freshAnalysis = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -151,13 +146,26 @@ export function useConversation({ onSave } = {}) {
               setAssistantContent(fullText);
 
             } else if (event.type === 'done') {
-              const json = extractJsonBlock(fullText);
-              if (json) {
+              const rich = parseRichResponse(fullText);
+              const stripped = stripJsonBlock(fullText);
+
+              if (isRich(rich)) {
+                // Rich response — store parsed data + strip JSON block from displayed text
                 setAnalysis((prev) => {
-                  freshAnalysis = { ...prev, ...json };
+                  freshAnalysis = { ...prev, ...rich };
                   return freshAnalysis;
                 });
-                setAssistantContent(stripJsonBlock(fullText));
+                setAssistantContent(stripped, rich);
+              } else {
+                // Legacy dashboard-only or plain text
+                const json = extractJsonBlock(fullText);
+                if (json) {
+                  setAnalysis((prev) => {
+                    freshAnalysis = { ...prev, ...json };
+                    return freshAnalysis;
+                  });
+                }
+                setAssistantContent(stripped);
               }
 
             } else if (event.type === 'error') {
@@ -168,7 +176,7 @@ export function useConversation({ onSave } = {}) {
               } catch { /* plain text */ }
               setAssistantContent(`Error: ${errMsg}`);
             }
-          } catch { /* partial JSON fragment — next chunk will complete it */ }
+          } catch { /* partial JSON fragment */ }
         }
       }
 
@@ -191,7 +199,6 @@ export function useConversation({ onSave } = {}) {
         }
       }
 
-      // Save to local history — prefer Supabase UUID so restore can refetch from DB
       if (onSave) {
         const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: stripJsonBlock(fullText) }];
         onSave(cid || convIdRef.current, text.slice(0, 60), finalMessages, freshAnalysis ?? analysis);

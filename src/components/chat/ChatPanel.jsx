@@ -100,6 +100,7 @@ export function ChatPanel({ messages, streaming, onSend }) {
               key={msg.id}
               role={msg.role}
               content={msg.content}
+              rich={msg.rich ?? null}
               isStreaming={streaming && i === messages.length - 1 && msg.role === 'assistant'}
             />
           ))}

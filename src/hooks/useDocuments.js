@@ -1,7 +1,19 @@
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
+import mammoth from 'mammoth';
 import { supabase } from '../lib/supabase';
 import { chunkText } from '../lib/chunker';
+
+const SUPPORTED_EXTS = new Set(['pdf', 'xlsx', 'xls', 'csv', 'docx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'gif']);
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
+
+const MIME_MAP = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
 
 function readAsBase64(file) {
   return new Promise((resolve, reject) => {
@@ -9,6 +21,24 @@ function readAsBase64(file) {
     reader.onload = (e) => resolve(e.target.result.split(',')[1]);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function readAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function readAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -41,10 +71,20 @@ export function useDocuments() {
 
   const addDocument = async (file) => {
     const ext = file.name.split('.').pop().toLowerCase();
+    if (!SUPPORTED_EXTS.has(ext)) {
+      setError(`Unsupported file type ".${ext}". Supported: PDF, XLSX, XLS, CSV, DOCX, TXT, PNG, JPG, JPEG, WEBP, GIF.`);
+      return;
+    }
+    if (documents.some((d) => d.name === file.name)) {
+      setError(`"${file.name}" already uploaded.`);
+      return;
+    }
+
     const isPDF = ext === 'pdf';
     const isSheet = ['xlsx', 'xls', 'csv'].includes(ext);
-    if (!isPDF && !isSheet) { setError('Unsupported file type. Upload PDF, XLSX, XLS, or CSV.'); return; }
-    if (documents.some((d) => d.name === file.name)) { setError(`"${file.name}" already uploaded.`); return; }
+    const isImage = IMAGE_EXTS.has(ext);
+    const isDocx = ext === 'docx';
+    const isTxt = ext === 'txt';
 
     const docId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     setDocuments((prev) => [...prev, { id: docId, name: file.name, ext, size: file.size, status: 'processing' }]);
@@ -52,10 +92,11 @@ export function useDocuments() {
 
     try {
       let base64 = null;
+      let mimeType = null;
       let text = '';
+
       if (isPDF) {
         base64 = await readAsBase64(file);
-        // Extract text server-side so PDFs get chunked and stored in Supabase RAG
         try {
           const extractRes = await fetch('/api/extract-pdf', {
             method: 'POST',
@@ -67,12 +108,22 @@ export function useDocuments() {
         } catch {
           text = `[PDF Document: ${file.name}]`;
         }
-      } else {
+      } else if (isSheet) {
         text = await readSpreadsheetAsText(file);
+      } else if (isImage) {
+        base64 = await readAsBase64(file);
+        mimeType = MIME_MAP[ext] || 'image/jpeg';
+        text = `[Image: ${file.name}]`;
+      } else if (isDocx) {
+        const arrayBuffer = await readAsArrayBuffer(file);
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        text = result.value.slice(0, 50000) || `[DOCX Document: ${file.name}]`;
+      } else if (isTxt) {
+        text = (await readAsText(file)).slice(0, 50000);
       }
 
       let dbId = docId;
-      if (supabase) {
+      if (supabase && !isImage) {
         const { data: doc } = await supabase
           .from('documents')
           .insert({ name: file.name, size_bytes: file.size, file_type: ext })
@@ -90,35 +141,33 @@ export function useDocuments() {
       }
 
       setDocuments((prev) =>
-        prev.map((d) => d.id === docId ? { ...d, id: dbId, base64, text, status: 'ready' } : d)
+        prev.map((d) => d.id === docId ? { ...d, id: dbId, base64, mimeType, text, status: 'ready' } : d)
       );
 
-      // Asynchronously generate a condensed fact-sheet summary for all docs.
-      // The doc is already 'ready' — summary enriches it in the background.
-      // PDFs: send base64 to the summarize endpoint.
-      // Spreadsheets: send extracted text (they're never sent as document blocks,
-      //   so the summary is the only context Claude gets on follow-up turns).
-      const summarizeBody = isPDF && base64
-        ? { pdfBase64: base64, fileName: file.name }
-        : !isPDF && text
-          ? { plainText: text, fileName: file.name }
-          : null;
+      // Async summary for non-image documents
+      if (!isImage) {
+        const summarizeBody = isPDF && base64
+          ? { pdfBase64: base64, fileName: file.name }
+          : text
+            ? { plainText: text, fileName: file.name }
+            : null;
 
-      if (summarizeBody) {
-        fetch('/api/summarize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(summarizeBody),
-        })
-          .then((r) => r.json())
-          .then(({ summary }) => {
-            if (summary) {
-              setDocuments((prev) =>
-                prev.map((d) => d.id === dbId ? { ...d, summary } : d)
-              );
-            }
+        if (summarizeBody) {
+          fetch('/api/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(summarizeBody),
           })
-          .catch(() => { /* silent — direct text fallback still works */ });
+            .then((r) => r.json())
+            .then(({ summary }) => {
+              if (summary) {
+                setDocuments((prev) =>
+                  prev.map((d) => d.id === dbId ? { ...d, summary } : d)
+                );
+              }
+            })
+            .catch(() => { /* silent — direct text fallback still works */ });
+        }
       }
     } catch (err) {
       setDocuments((prev) => prev.map((d) => d.id === docId ? { ...d, status: 'error' } : d));

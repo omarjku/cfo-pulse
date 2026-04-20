@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { StreamingCursor } from './StreamingCursor';
+import { RichResponse } from './RichResponse';
 import { T } from '../../lib/tokens';
 
 function CFOAvatar() {
@@ -56,8 +57,6 @@ const mdComponents = {
       </p>
     );
   },
-  // Last <p> inside a bubble shouldn't have bottom margin
-  // (handled by the container's lastChild selector workaround below)
   strong({ children }) {
     return <strong style={{ fontWeight: 700, color: T.TEXT1 }}>{children}</strong>;
   },
@@ -153,7 +152,7 @@ const mdComponents = {
   },
 };
 
-export function MessageBubble({ role, content, isStreaming }) {
+export function MessageBubble({ role, content, rich, isStreaming }) {
   const isAssistant = role === 'assistant';
 
   return (
@@ -172,7 +171,7 @@ export function MessageBubble({ role, content, isStreaming }) {
       {isAssistant ? <CFOAvatar /> : <UserAvatar />}
 
       <div style={{
-        maxWidth: '76%',
+        maxWidth: rich ? '92%' : '76%',
         background: isAssistant ? 'rgba(8,9,24,0.82)' : 'rgba(13,14,31,0.9)',
         border: `1px solid ${isAssistant ? 'rgba(245,158,11,0.22)' : T.BORDER}`,
         borderRadius: isAssistant ? '2px 12px 12px 12px' : '12px 2px 12px 12px',
@@ -208,7 +207,14 @@ export function MessageBubble({ role, content, isStreaming }) {
           <div style={{ fontSize: 14, lineHeight: 1.7, color: T.TEXT1, wordBreak: 'break-word' }}>
             {isStreaming && !content ? (
               <TypingDots />
+            ) : rich ? (
+              /* Rich structured response */
+              <>
+                <RichResponse rich={rich} />
+                {isStreaming && <StreamingCursor />}
+              </>
             ) : (
+              /* Plain markdown fallback */
               <>
                 <ReactMarkdown components={mdComponents}>{content || ''}</ReactMarkdown>
                 {isStreaming && <StreamingCursor />}
