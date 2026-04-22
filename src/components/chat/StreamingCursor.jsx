@@ -7,7 +7,7 @@ export function StreamingCursor() {
         display: 'inline-block',
         width: 2,
         height: '1em',
-        background: '#f59e0b',
+        background: 'rgba(210,138,22,0.90)',
         borderRadius: 1,
         marginLeft: 2,
         verticalAlign: 'text-bottom',

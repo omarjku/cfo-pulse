@@ -6,8 +6,10 @@ export function ActionsList({ actions }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <p style={{
-        fontSize: 10, fontWeight: 800, color: T.AMBER,
-        fontFamily: 'monospace', letterSpacing: '1.5px', marginBottom: 8,
+        fontSize: 9, fontWeight: 700, color: T.AMBER,
+        fontFamily: "'Barlow Condensed', sans-serif",
+        letterSpacing: '2.5px', textTransform: 'uppercase',
+        marginBottom: 8,
       }}>
         RECOMMENDED ACTIONS
       </p>
@@ -22,13 +24,14 @@ export function ActionsList({ actions }) {
           >
             <span style={{
               width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-              background: 'rgba(245,158,11,0.15)', border: `1px solid rgba(245,158,11,0.3)`,
+              background: T.AMBER_BG, border: `1px solid ${T.BORDER_A}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, fontWeight: 800, color: T.AMBER, fontFamily: 'monospace',
+              fontSize: 10, fontWeight: 700, color: T.AMBER,
+              fontFamily: "'JetBrains Mono', monospace",
             }}>
               {i + 1}
             </span>
-            <span style={{ fontSize: 13, color: T.TEXT1, lineHeight: 1.55, paddingTop: 2 }}>{action}</span>
+            <span style={{ fontSize: 12, color: T.TEXT2, lineHeight: 1.55, paddingTop: 2 }}>{action}</span>
           </motion.li>
         ))}
       </ol>

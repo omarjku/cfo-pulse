@@ -24,7 +24,7 @@ export function DocumentLibrary({ documents, onRemove }) {
             exit={{ opacity: 0, x: -8 }}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              background: T.SURFACE2, border: `1px solid ${T.BORDER}`,
+              backgroundColor: T.SURFACE2, border: `1px solid ${T.EDGE_SEP}`,
               borderRadius: 6, padding: '5px 8px',
             }}
           >

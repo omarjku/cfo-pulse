@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageBubble } from './MessageBubble';
-import { T } from '../../lib/tokens';
+import { T, metalBg } from '../../lib/tokens';
 
 const SUGGESTIONS = [
   'What is my burn rate?',
@@ -16,44 +16,38 @@ function EmptyState({ onSend }) {
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', height: '100%', gap: 20, padding: 40,
     }}>
-      {/* Avatar with animated glow ring */}
-      <div style={{ position: 'relative' }}>
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-          style={{
-            position: 'absolute', inset: -5, borderRadius: 18,
-            background: 'conic-gradient(from 0deg, rgba(245,158,11,0.5), transparent, rgba(245,158,11,0.5))',
-          }}
-        />
+      {/* Logo mark */}
+      <div style={{
+        width: 56, height: 56, borderRadius: 14,
+        ...metalBg(3),
+        border: `1px solid ${T.EDGE_SEP}`,
+        boxShadow: T.MACHINED,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
         <div style={{
-          position: 'relative',
-          width: 64, height: 64, borderRadius: 16,
-          background: T.GRAD_AMBER,
-          boxShadow: '0 0 30px rgba(245,158,11,0.5), 0 0 60px rgba(245,158,11,0.2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 20, fontWeight: 900, color: '#05060f', fontFamily: 'monospace',
-          letterSpacing: '1px',
-        }}>
-          CF
-        </div>
+          width: 22, height: 22,
+          background: T.AMBER,
+          clipPath: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
+        }} />
       </div>
 
-      <div style={{ textAlign: 'center', maxWidth: 320 }}>
+      <div style={{ textAlign: 'center', maxWidth: 300 }}>
         <p style={{
-          color: T.TEXT1, fontWeight: 700, fontSize: 17,
-          margin: '0 0 8px', letterSpacing: '-0.3px',
+          color: T.TEXT2, fontWeight: 600, fontSize: 15,
+          margin: '0 0 7px',
+          fontFamily: "'Barlow Condensed', sans-serif",
+          letterSpacing: '1px', textTransform: 'uppercase',
         }}>
-          CFO-Pulse is ready
+          CFO-Pulse ready
         </p>
-        <p style={{ color: T.TEXT3, fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+        <p style={{ color: T.TEXT3, fontSize: 12, margin: 0, lineHeight: 1.6 }}>
           Upload financial documents from the sidebar,<br />then ask anything about your numbers.
         </p>
       </div>
 
       {/* Suggestion chips */}
       <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 8,
+        display: 'flex', flexWrap: 'wrap', gap: 7,
         justifyContent: 'center', marginTop: 4, maxWidth: 380,
       }}>
         {SUGGESTIONS.map((s, i) => (
@@ -64,15 +58,15 @@ function EmptyState({ onSend }) {
             transition={{ delay: 0.1 + i * 0.06, duration: 0.3 }}
             onClick={() => onSend(s)}
             style={{
-              background: 'rgba(10,11,26,0.8)',
-              border: `1px solid ${T.BORDER}`,
-              borderRadius: 20, padding: '6px 14px',
-              fontSize: 12, color: T.TEXT2,
-              cursor: 'pointer',
-              backdropFilter: 'blur(8px)',
-              transition: 'border-color 0.2s, color 0.2s',
+              ...metalBg(2),
+              border: `1px solid ${T.EDGE_SEP}`,
+              boxShadow: `inset 0 1px 0 ${T.EDGE_HI}, 0 1px 3px rgba(0,0,0,0.3)`,
+              borderRadius: 100, padding: '5px 13px',
+              fontSize: 11, color: T.TEXT3, cursor: 'pointer',
+              fontFamily: "'Figtree', sans-serif",
+              transition: 'color 0.15s, background-color 0.12s',
             }}
-            whileHover={{ borderColor: 'rgba(245,158,11,0.35)', color: T.TEXT1, scale: 1.02 }}
+            whileHover={{ backgroundColor: T.SURFACE4, color: T.TEXT2, scale: 1.02 }}
           >
             {s}
           </motion.div>
@@ -90,7 +84,7 @@ export function ChatPanel({ messages, streaming, onSend }) {
   }, [messages]);
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', ...metalBg(2) }}>
       {messages.length === 0 ? (
         <EmptyState onSend={onSend} />
       ) : (
