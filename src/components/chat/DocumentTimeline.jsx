@@ -83,7 +83,7 @@ const CustomTooltip = ({ active, payload }) => {
   if (!row) return null;
   return (
     <div style={{
-      background: T.SURFACE2, border: `1px solid ${T.BORDER}`,
+      backgroundColor: T.SURFACE2, border: `1px solid ${T.EDGE_SEP}`,
       borderRadius: 6, padding: '8px 12px', fontSize: 12, maxWidth: 240,
     }}>
       <p style={{ margin: '0 0 3px', fontWeight: 700, color: T.TEXT1 }}>{row.name}</p>
@@ -104,15 +104,15 @@ export function DocumentTimeline({ timelines }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <p style={{
-        fontSize: 10, fontWeight: 800, color: T.AMBER,
-        fontFamily: 'monospace', letterSpacing: '1.5px', marginBottom: 8,
+        fontSize: 9, fontWeight: 700, color: T.AMBER,
+        fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 8,
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
         DOCUMENT TIMELINE
         {hasUnknown && (
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 3,
-            background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)',
+            background: T.AMBER_BG, border: `1px solid ${T.BORDER_A}`,
             borderRadius: 4, padding: '1px 6px', fontSize: 9, color: T.AMBER,
           }}>
             <AlertCircle size={9} /> some dates missing
@@ -121,8 +121,8 @@ export function DocumentTimeline({ timelines }) {
       </p>
 
       <div style={{
-        background: 'rgba(5,6,15,0.5)',
-        border: `1px solid ${T.BORDER}`,
+        backgroundColor: T.SURFACE2,
+        border: `1px solid ${T.EDGE_SEP}`,
         borderRadius: 8, padding: '12px 8px 4px',
       }}>
         <ResponsiveContainer width="100%" height={chartHeight}>

@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
 import { logout } from '../../lib/auth';
-import { ParticleField } from '../ambient/ParticleField';
 import { Sidebar } from './Sidebar';
 import { ChatPanel } from '../chat/ChatPanel';
 import { InputBar } from '../chat/InputBar';
@@ -8,7 +7,7 @@ import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { useDocuments } from '../../hooks/useDocuments';
 import { useConversation } from '../../hooks/useConversation';
 import { useHistory } from '../../hooks/useHistory';
-import { T } from '../../lib/tokens';
+import { T, metalBg } from '../../lib/tokens';
 
 export function AppShell({ user, onLogout }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -46,9 +45,7 @@ export function AppShell({ user, onLogout }) {
   const readyDocs = documents.filter((d) => d.status === 'ready');
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', position: 'relative', background: T.BG }}>
-      <ParticleField />
-
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', position: 'relative', ...metalBg(0) }}>
       <input
         ref={fileInputRef} type="file" multiple hidden
         accept=".pdf,.xlsx,.xls,.csv"
@@ -78,7 +75,7 @@ export function AppShell({ user, onLogout }) {
         {/* Chat panel */}
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          borderRight: `1px solid ${T.BORDER}`,
+          borderRight: `1px solid ${T.EDGE_SEP}`,
         }}>
           <ChatPanel messages={messages} streaming={streaming} onSend={handleSend} />
           {docError && (
@@ -95,7 +92,7 @@ export function AppShell({ user, onLogout }) {
         </div>
 
         {/* Dashboard panel */}
-        <div style={{ width: 320, flexShrink: 0, overflow: 'hidden', background: T.SURFACE }}>
+        <div style={{ width: 320, flexShrink: 0, overflow: 'hidden', ...metalBg(1) }}>
           <DashboardPanel analysis={analysis} />
         </div>
       </div>

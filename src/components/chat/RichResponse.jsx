@@ -25,8 +25,10 @@ function fmt(value, format) {
 function SectionLabel({ children }) {
   return (
     <p style={{
-      fontSize: 10, fontWeight: 800, color: T.AMBER,
-      fontFamily: 'monospace', letterSpacing: '1.5px', marginBottom: 8, margin: '0 0 8px',
+      fontSize: 9, fontWeight: 700, color: T.AMBER,
+      fontFamily: "'Barlow Condensed', sans-serif",
+      letterSpacing: '2.5px', textTransform: 'uppercase',
+      margin: '0 0 8px',
     }}>
       {children}
     </p>
@@ -45,19 +47,23 @@ function KpiGrid({ kpis }) {
       }}>
         {kpis.slice(0, 8).map((kpi, i) => (
           <div key={i} style={{
-            background: T.SURFACE2,
-            border: `1px solid ${T.BORDER}`,
+            backgroundColor: T.SURFACE3,
+            backgroundImage: T.NOISE,
+            backgroundBlendMode: 'overlay',
+            backgroundSize: '256px 256px',
+            border: `1px solid ${T.EDGE_SEP}`,
+            boxShadow: T.MACHINED_SM,
             borderRadius: 6,
             padding: '8px 10px',
           }}>
-            <p style={{ fontSize: 10, color: T.TEXT3, fontFamily: 'monospace', letterSpacing: '0.5px', margin: '0 0 3px', textTransform: 'uppercase' }}>
+            <p style={{ fontSize: 10, color: T.TEXT3, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.5px', margin: '0 0 3px', textTransform: 'uppercase' }}>
               {kpi.label}
             </p>
             <p style={{ fontSize: 15, fontWeight: 700, color: T.TEXT1, margin: 0, lineHeight: 1.2 }}>
               {fmt(kpi.value, kpi.format)}
             </p>
             {kpi.source && (
-              <p style={{ fontSize: 9, color: T.TEXT3, margin: '2px 0 0', fontFamily: 'monospace' }}>
+              <p style={{ fontSize: 9, color: T.TEXT3, margin: '2px 0 0', fontFamily: "'JetBrains Mono', monospace" }}>
                 {kpi.source}
               </p>
             )}
@@ -93,8 +99,8 @@ function ImpliedPL({ pl }) {
     <div style={{ marginBottom: 16 }}>
       <SectionLabel>IMPLIED P&amp;L{pl.currency ? ` (${pl.currency})` : ''}</SectionLabel>
       <div style={{
-        background: T.SURFACE2,
-        border: `1px solid ${T.BORDER}`,
+        backgroundColor: T.SURFACE2,
+        border: `1px solid ${T.EDGE_SEP}`,
         borderRadius: 6,
         overflow: 'hidden',
       }}>
@@ -104,8 +110,8 @@ function ImpliedPL({ pl }) {
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '6px 12px',
-            borderTop: i > 0 ? `1px solid ${T.BORDER}` : 'none',
-            background: row.bold ? 'rgba(245,158,11,0.04)' : 'transparent',
+            borderTop: i > 0 ? `1px solid ${T.EDGE_SEP}` : 'none',
+            background: row.bold ? 'rgba(210,138,22,0.04)' : 'transparent',
           }}>
             <span style={{
               fontSize: 12,
@@ -120,7 +126,7 @@ function ImpliedPL({ pl }) {
               fontSize: 13,
               fontWeight: row.bold ? 700 : 400,
               color: row.color || (row.value < 0 ? T.DANGER : row.bold ? T.TEXT1 : T.TEXT2),
-              fontFamily: 'monospace',
+              fontFamily: "'JetBrains Mono', monospace",
             }}>
               {row.value < 0
                 ? `(${Math.abs(row.value).toLocaleString(undefined, { maximumFractionDigits: 0 })})`
@@ -131,7 +137,7 @@ function ImpliedPL({ pl }) {
         ))}
       </div>
       {pl.note && (
-        <p style={{ fontSize: 10, color: T.TEXT3, fontFamily: 'monospace', margin: '4px 0 0', fontStyle: 'italic' }}>
+        <p style={{ fontSize: 10, color: T.TEXT3, fontFamily: "'JetBrains Mono', monospace", margin: '4px 0 0', fontStyle: 'italic' }}>
           {pl.note}
         </p>
       )}
@@ -166,7 +172,7 @@ export function RichResponse({ rich }) {
           style={{ marginBottom: 16 }}
         >
           <SectionLabel>EXECUTIVE SUMMARY</SectionLabel>
-          <p style={{ fontSize: 14, color: T.TEXT1, lineHeight: 1.7, margin: 0 }}>
+          <p style={{ fontSize: 13, color: T.TEXT2, lineHeight: 1.72, margin: 0 }}>
             {narrative}
           </p>
         </motion.div>

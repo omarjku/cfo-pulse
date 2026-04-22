@@ -11,7 +11,7 @@ export function HealthGauge({ score }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <svg viewBox="0 0 180 110" width="160" height="98">
-        <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke={T.BORDER} strokeWidth="12" strokeLinecap="round" />
+        <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="12" strokeLinecap="round" />
         {score > 0 && (
           <motion.path
             d={`M 20 90 A 70 70 0 0 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`}
@@ -20,7 +20,7 @@ export function HealthGauge({ score }) {
             transition={{ duration: 1.2, ease: 'easeOut' }}
           />
         )}
-        <text x="90" y="84" textAnchor="middle" fontSize="24" fontWeight="800" fill={T.TEXT1}>
+        <text x="90" y="84" textAnchor="middle" fontSize="24" fontWeight="500" fill="rgba(255,255,255,0.84)" fontFamily="'JetBrains Mono', monospace">
           {score}
         </text>
         <text x="90" y="98" textAnchor="middle" fontSize="9" fill={T.TEXT3}>/ 100</text>

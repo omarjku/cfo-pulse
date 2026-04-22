@@ -4,7 +4,30 @@ import { KPICard } from './KPICard';
 import { TrendChart } from './TrendChart';
 import { useFinancialCalcs } from '../../hooks/useFinancialCalcs';
 import { fmt, pct } from '../../lib/formatters';
-import { T } from '../../lib/tokens';
+import { T, metalBg } from '../../lib/tokens';
+
+const SECTION_LABEL = {
+  fontFamily: "'Barlow Condensed', sans-serif",
+  fontSize: 8, fontWeight: 700,
+  letterSpacing: '3px', textTransform: 'uppercase',
+  color: T.TEXT4, margin: '0 0 8px',
+};
+
+function RiskItem({ text, color, bg, bd }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 8,
+      padding: '6px 9px', marginBottom: 5,
+      borderRadius: 5,
+      background: bg,
+      border: `1px solid ${bd}`,
+      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.03)`,
+    }}>
+      <div style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0, marginTop: 4 }} />
+      <p style={{ fontSize: 11, color: T.TEXT2, lineHeight: 1.45, margin: 0, flex: 1 }}>{text}</p>
+    </div>
+  );
+}
 
 export function DashboardPanel({ analysis }) {
   const { income, balance, cashFlow, prior, healthScore, monthlyTrend, analysis: insights } = analysis;
@@ -23,28 +46,32 @@ export function DashboardPanel({ analysis }) {
     Math.abs(cashFlow?.operating || 0) > 0;
 
   return (
-    <div style={{
-      width: '100%', height: '100%', overflowY: 'auto',
-      display: 'flex', flexDirection: 'column', gap: 0,
-    }}>
+    <div style={{ width: '100%', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Header */}
       <div style={{
-        padding: '14px 16px', borderBottom: `1px solid ${T.BORDER}`,
+        padding: '12px 16px',
+        borderBottom: `1px solid ${T.EDGE_SEP}`,
+        boxShadow: `inset 0 1px 0 ${T.EDGE_HI}, 0 1px 0 rgba(0,0,0,0.2)`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexShrink: 0,
       }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: T.AMBER, fontFamily: 'monospace', letterSpacing: '1px' }}>
+        <span style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 9, fontWeight: 700,
+          color: T.AMBER, letterSpacing: '2.5px', textTransform: 'uppercase',
+        }}>
           LIVE ANALYSIS
         </span>
         {hasData && (
           <div style={{
-            width: 6, height: 6, borderRadius: '50%', background: T.SUCCESS,
-            boxShadow: `0 0 6px ${T.SUCCESS}`,
+            width: 5, height: 5, borderRadius: '50%',
+            background: T.SUCCESS,
+            boxShadow: `0 0 5px rgba(56,160,80,0.35)`,
           }} />
         )}
       </div>
 
-      <div style={{ padding: 16, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: 14, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* Health Score */}
         <AnimatePresence>
           {hasData && (
@@ -58,7 +85,7 @@ export function DashboardPanel({ analysis }) {
         </AnimatePresence>
 
         {/* KPI Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
           <KPICard label="Revenue" rawValue={calc.revenue} format={(v) => fmt(v)} value={fmt(calc.revenue)} />
           <KPICard label="Gross Margin" value={pct(calc.grossMargin)} />
           <KPICard
@@ -80,9 +107,7 @@ export function DashboardPanel({ analysis }) {
         {/* Monthly Trend */}
         {monthlyTrend && monthlyTrend.length > 0 && (
           <div>
-            <p style={{ fontSize: 9, fontWeight: 700, color: T.TEXT3, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 8px', fontFamily: 'monospace' }}>
-              MONTHLY TREND
-            </p>
+            <p style={SECTION_LABEL}>Monthly Trend</p>
             <TrendChart data={monthlyTrend} />
           </div>
         )}
@@ -90,22 +115,15 @@ export function DashboardPanel({ analysis }) {
         {/* Risk Factors */}
         {insights?.riskFactors?.length > 0 && (
           <div>
-            <p style={{ fontSize: 9, fontWeight: 700, color: T.DANGER, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 8px', fontFamily: 'monospace' }}>
-              RISK FACTORS
-            </p>
+            <p style={{ ...SECTION_LABEL, color: T.DANGER }}>Risk Factors</p>
             {insights.riskFactors.map((r, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08 }}
-                style={{
-                  background: T.SURFACE2, borderLeft: `2px solid ${T.DANGER}`,
-                  borderRadius: '0 6px 6px 0', padding: '5px 8px', marginBottom: 5,
-                  fontSize: 11, color: T.TEXT2, lineHeight: 1.4,
-                }}
               >
-                {r}
+                <RiskItem text={r} color={T.DANGER} bg={T.DANGER_BG} bd={T.DANGER_BD} />
               </motion.div>
             ))}
           </div>
@@ -114,30 +132,23 @@ export function DashboardPanel({ analysis }) {
         {/* Strengths */}
         {insights?.strengths?.length > 0 && (
           <div>
-            <p style={{ fontSize: 9, fontWeight: 700, color: T.SUCCESS, textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 8px', fontFamily: 'monospace' }}>
-              STRENGTHS
-            </p>
+            <p style={{ ...SECTION_LABEL, color: T.SUCCESS }}>Strengths</p>
             {insights.strengths.map((s, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08 }}
-                style={{
-                  background: T.SURFACE2, borderLeft: `2px solid ${T.SUCCESS}`,
-                  borderRadius: '0 6px 6px 0', padding: '5px 8px', marginBottom: 5,
-                  fontSize: 11, color: T.TEXT2, lineHeight: 1.4,
-                }}
               >
-                {s}
+                <RiskItem text={s} color={T.SUCCESS} bg="rgba(56,160,80,0.07)" bd="rgba(56,160,80,0.18)" />
               </motion.div>
             ))}
           </div>
         )}
 
         {!hasData && (
-          <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-            <p style={{ color: T.TEXT3, fontSize: 12, lineHeight: 1.6 }}>
+          <div style={{ textAlign: 'center', padding: '32px 12px' }}>
+            <p style={{ color: T.TEXT3, fontSize: 11, lineHeight: 1.6 }}>
               Upload financial documents and ask CFO-Pulse to analyze them.<br />
               KPIs and charts will appear here.
             </p>

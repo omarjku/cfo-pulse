@@ -4,19 +4,22 @@ import ReactMarkdown from 'react-markdown';
 import { Code2, Copy, ExternalLink, Check } from 'lucide-react';
 import { StreamingCursor } from './StreamingCursor';
 import { RichResponse } from './RichResponse';
-import { T } from '../../lib/tokens';
+import { T, metalBg } from '../../lib/tokens';
 
 function CFOAvatar() {
   return (
     <div style={{
-      width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-      boxShadow: '0 0 12px rgba(245,158,11,0.4), 0 0 0 1px rgba(245,158,11,0.3)',
+      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+      background: T.AMBER_BG,
+      border: `1px solid ${T.BORDER_A}`,
+      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 3px rgba(0,0,0,0.4)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 10, fontWeight: 900, color: '#05060f', fontFamily: 'monospace',
-      letterSpacing: '0.5px',
     }}>
-      CF
+      <div style={{
+        width: 11, height: 11,
+        background: T.AMBER,
+        clipPath: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
+      }} />
     </div>
   );
 }
@@ -24,11 +27,14 @@ function CFOAvatar() {
 function UserAvatar() {
   return (
     <div style={{
-      width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-      background: 'linear-gradient(135deg, #1e2040, #0d0e1f)',
-      border: `1px solid ${T.BORDER}`,
+      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+      ...metalBg(4),
+      border: `1px solid ${T.EDGE_SEP}`,
+      boxShadow: T.MACHINED_SM,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 11, fontWeight: 700, color: T.TEXT2, letterSpacing: '0.5px',
+      fontSize: 10, fontWeight: 600, color: T.TEXT3,
+      fontFamily: "'Barlow Condensed', sans-serif",
+      letterSpacing: '1px',
     }}>
       U
     </div>
@@ -36,14 +42,15 @@ function UserAvatar() {
 }
 
 const toolbarBtn = {
-  background: 'transparent',
-  border: `1px solid ${T.BORDER}`,
+  ...metalBg(4),
+  border: `1px solid ${T.EDGE_SEP}`,
+  boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 2px rgba(0,0,0,0.3)`,
   borderRadius: 4,
   padding: '3px 6px',
-  color: T.TEXT2,
+  color: T.TEXT3,
   cursor: 'pointer',
   display: 'flex', alignItems: 'center',
-  transition: 'color 0.15s, border-color 0.15s',
+  transition: 'color 0.15s',
 };
 
 function HtmlArtifact({ html }) {
@@ -67,23 +74,24 @@ function HtmlArtifact({ html }) {
   return (
     <div style={{
       margin: '10px 0',
-      border: `1px solid ${T.BORDER}`,
-      borderRadius: 8,
-      overflow: 'hidden',
-      background: T.SURFACE,
+      border: `1px solid ${T.EDGE_SEP}`,
+      borderRadius: 8, overflow: 'hidden',
+      ...metalBg(3),
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '6px 10px',
-        background: 'rgba(245,158,11,0.06)',
-        borderBottom: `1px solid ${T.BORDER}`,
+        ...metalBg(2),
+        borderBottom: `1px solid ${T.EDGE_SEP}`,
+        boxShadow: T.MACHINED_SM,
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          fontSize: 10, fontWeight: 800, letterSpacing: '1.5px',
-          color: T.AMBER, fontFamily: 'monospace',
+          fontSize: 9, fontWeight: 700, letterSpacing: '2px',
+          color: T.AMBER, fontFamily: "'Barlow Condensed', sans-serif",
+          textTransform: 'uppercase',
         }}>
-          <Code2 size={11} />
+          <Code2 size={10} />
           ARTIFACT
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -107,12 +115,12 @@ function HtmlArtifact({ html }) {
 
 function TypingDots() {
   const dot = (delay) => ({
-    width: 7, height: 7, borderRadius: '50%', background: '#f59e0b',
+    width: 6, height: 6, borderRadius: '50%', background: T.AMBER,
     animation: `cfoBounce 0.9s ${delay}s ease-in-out infinite`,
   });
   return (
     <>
-      <style>{`@keyframes cfoBounce{0%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-4px);opacity:1}}`}</style>
+      <style>{`@keyframes cfoBounce{0%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:0.9}}`}</style>
       <div style={{ display: 'flex', gap: 5, alignItems: 'center', padding: '4px 2px' }}>
         <div style={dot(0)} /><div style={dot(0.12)} /><div style={dot(0.24)} />
       </div>
@@ -120,29 +128,43 @@ function TypingDots() {
   );
 }
 
-// Markdown component overrides — styled to match the dark theme
 const mdComponents = {
   p({ children }) {
     return (
-      <p style={{ margin: '0 0 10px', lineHeight: 1.7, fontSize: 14, color: T.TEXT1 }}>
+      <p style={{ margin: '0 0 10px', lineHeight: 1.72, fontSize: 13, color: T.TEXT2 }}>
         {children}
       </p>
     );
   },
   strong({ children }) {
-    return <strong style={{ fontWeight: 700, color: T.TEXT1 }}>{children}</strong>;
+    return <strong style={{ fontWeight: 600, color: T.TEXT1 }}>{children}</strong>;
   },
   em({ children }) {
     return <em style={{ color: T.TEXT2, fontStyle: 'italic' }}>{children}</em>;
   },
   h1({ children }) {
-    return <h1 style={{ fontSize: 16, fontWeight: 800, color: T.TEXT1, margin: '14px 0 6px', letterSpacing: '-0.3px' }}>{children}</h1>;
+    return (
+      <h1 style={{
+        fontSize: 14, fontWeight: 700, color: T.TEXT1, margin: '14px 0 6px',
+        fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '1px', textTransform: 'uppercase',
+      }}>{children}</h1>
+    );
   },
   h2({ children }) {
-    return <h2 style={{ fontSize: 14, fontWeight: 700, color: T.TEXT1, margin: '12px 0 5px', letterSpacing: '-0.2px' }}>{children}</h2>;
+    return (
+      <h2 style={{
+        fontSize: 12, fontWeight: 700, color: T.TEXT2, margin: '12px 0 5px',
+        fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '1px', textTransform: 'uppercase',
+      }}>{children}</h2>
+    );
   },
   h3({ children }) {
-    return <h3 style={{ fontSize: 13, fontWeight: 700, color: T.AMBER, margin: '10px 0 4px', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{children}</h3>;
+    return (
+      <h3 style={{
+        fontSize: 11, fontWeight: 700, color: T.AMBER, margin: '10px 0 4px',
+        fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '1.5px', textTransform: 'uppercase',
+      }}>{children}</h3>
+    );
   },
   ul({ children }) {
     return <ul style={{ margin: '4px 0 10px', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>{children}</ul>;
@@ -151,9 +173,8 @@ const mdComponents = {
     return <ol style={{ margin: '4px 0 10px', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>{children}</ol>;
   },
   li({ children }) {
-    return <li style={{ fontSize: 14, color: T.TEXT1, lineHeight: 1.65 }}>{children}</li>;
+    return <li style={{ fontSize: 13, color: T.TEXT2, lineHeight: 1.65 }}>{children}</li>;
   },
-  // react-markdown v9: override `pre` to intercept block code (artifact detection lives here)
   pre({ children }) {
     const child = Array.isArray(children) ? children[0] : children;
     const { className = '', children: codeChildren } = child?.props || {};
@@ -163,59 +184,54 @@ const mdComponents = {
     if (isHtmlLang && isFullDoc) return <HtmlArtifact html={raw} />;
     return (
       <pre style={{
-        background: 'rgba(5,6,15,0.7)',
-        border: `1px solid ${T.BORDER}`,
-        borderRadius: 6,
-        padding: '10px 14px',
-        margin: '8px 0',
-        overflowX: 'auto',
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: T.TEXT2,
-        lineHeight: 1.6,
+        ...metalBg(1),
+        border: `1px solid ${T.EDGE_SEP}`,
+        boxShadow: T.MACHINED_SM,
+        borderRadius: 6, padding: '10px 14px', margin: '8px 0',
+        overflowX: 'auto', fontSize: 12,
+        fontFamily: "'JetBrains Mono', monospace",
+        color: T.TEXT2, lineHeight: 1.6,
       }}>
         {children}
       </pre>
     );
   },
-  // `code` handles inline (no className) and block interior (has className, inside pre above)
   code({ className, children }) {
     if (!className) {
       return (
         <code style={{
-          background: 'rgba(245,158,11,0.12)',
-          border: '1px solid rgba(245,158,11,0.2)',
-          borderRadius: 4,
-          padding: '1px 5px',
-          fontSize: 12,
-          fontFamily: 'monospace',
+          background: T.AMBER_BG,
+          border: `1px solid ${T.BORDER_A}`,
+          borderRadius: 4, padding: '1px 5px',
+          fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
           color: T.AMBER,
         }}>
           {children}
         </code>
       );
     }
-    return <code style={{ fontFamily: 'monospace', fontSize: 12 }}>{children}</code>;
+    return <code style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{children}</code>;
   },
   blockquote({ children }) {
     return (
       <blockquote style={{
-        borderLeft: `3px solid ${T.AMBER}`,
-        paddingLeft: 12,
-        margin: '8px 0',
-        color: T.TEXT2,
-        fontStyle: 'italic',
+        background: 'rgba(255,255,255,0.025)',
+        border: `1px solid ${T.EDGE_SEP}`,
+        borderRadius: 5, paddingLeft: 12, paddingRight: 12,
+        paddingTop: 8, paddingBottom: 8,
+        margin: '8px 0', color: T.TEXT2, fontStyle: 'italic',
       }}>
         {children}
       </blockquote>
     );
   },
   hr() {
-    return <hr style={{ border: 'none', borderTop: `1px solid ${T.BORDER}`, margin: '10px 0' }} />;
+    return <hr style={{ border: 'none', borderTop: `1px solid ${T.EDGE_SEP}`, margin: '10px 0' }} />;
   },
   a({ href, children }) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: T.AMBER, textDecoration: 'underline', textDecorationColor: 'rgba(245,158,11,0.4)' }}>
+      <a href={href} target="_blank" rel="noopener noreferrer"
+        style={{ color: T.AMBER, textDecoration: 'underline', textDecorationColor: `rgba(210,138,22,0.35)` }}>
         {children}
       </a>
     );
@@ -223,15 +239,22 @@ const mdComponents = {
   table({ children }) {
     return (
       <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-        <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>{children}</table>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>{children}</table>
       </div>
     );
   },
   th({ children }) {
-    return <th style={{ padding: '5px 10px', borderBottom: `1px solid ${T.BORDER}`, color: T.AMBER, fontFamily: 'monospace', fontSize: 11, textAlign: 'left', fontWeight: 700 }}>{children}</th>;
+    return (
+      <th style={{
+        padding: '5px 10px', borderBottom: `1px solid ${T.EDGE_SEP}`,
+        color: T.AMBER, fontFamily: "'Barlow Condensed', sans-serif",
+        fontSize: 10, textAlign: 'left', fontWeight: 700,
+        letterSpacing: '1.5px', textTransform: 'uppercase',
+      }}>{children}</th>
+    );
   },
   td({ children }) {
-    return <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.BORDER}`, color: T.TEXT2, fontSize: 13 }}>{children}</td>;
+    return <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.EDGE_SEP}`, color: T.TEXT2, fontSize: 12 }}>{children}</td>;
   },
 };
 
@@ -244,60 +267,47 @@ export function MessageBubble({ role, content, rich, isStreaming }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       style={{
-        display: 'flex',
-        gap: 12,
+        display: 'flex', gap: 10,
         flexDirection: isAssistant ? 'row' : 'row-reverse',
-        marginBottom: 20,
-        alignItems: 'flex-start',
+        marginBottom: 20, alignItems: 'flex-start',
       }}
     >
       {isAssistant ? <CFOAvatar /> : <UserAvatar />}
 
       <div style={{
         maxWidth: rich ? '92%' : '76%',
-        background: isAssistant ? 'rgba(8,9,24,0.82)' : 'rgba(13,14,31,0.9)',
-        border: `1px solid ${isAssistant ? 'rgba(245,158,11,0.22)' : T.BORDER}`,
-        borderRadius: isAssistant ? '2px 12px 12px 12px' : '12px 2px 12px 12px',
+        ...metalBg(3),
+        border: `1px solid ${T.EDGE_SEP}`,
+        borderRadius: isAssistant ? '2px 10px 10px 10px' : '10px 2px 10px 10px',
         padding: '12px 16px',
-        backdropFilter: 'blur(20px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-        boxShadow: isAssistant
-          ? '0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(245,158,11,0.08) inset'
-          : '0 4px 16px rgba(0,0,0,0.3)',
-        borderLeft: isAssistant ? `3px solid ${T.AMBER}` : undefined,
-        position: 'relative',
-        overflow: 'hidden',
+        boxShadow: `inset 0 1px 0 ${T.EDGE_HI}, inset 0 -1px 0 rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.4)`,
       }}>
         {isAssistant && (
           <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: 1,
-            background: 'linear-gradient(90deg, rgba(245,158,11,0.6), rgba(245,158,11,0.1), transparent)',
-          }} />
-        )}
-
-        {isAssistant && (
-          <div style={{
-            fontSize: 9, fontWeight: 800, color: T.AMBER,
-            fontFamily: 'monospace', letterSpacing: '1.5px', marginBottom: 8,
             display: 'flex', alignItems: 'center', gap: 6,
+            marginBottom: 8,
+            fontFamily: "'Barlow Condensed', sans-serif",
+            fontSize: 9, fontWeight: 700, color: T.TEXT3,
+            letterSpacing: '2.5px', textTransform: 'uppercase',
           }}>
+            <div style={{
+              width: 5, height: 5, borderRadius: '50%', background: T.AMBER,
+              boxShadow: `0 0 5px rgba(210,138,22,0.35)`,
+            }} />
             CFO-PULSE
-            <div style={{ width: 4, height: 4, borderRadius: '50%', background: T.SUCCESS, boxShadow: `0 0 6px ${T.SUCCESS}` }} />
           </div>
         )}
 
         {isAssistant ? (
-          <div style={{ fontSize: 14, lineHeight: 1.7, color: T.TEXT1, wordBreak: 'break-word' }}>
+          <div style={{ fontSize: 13, lineHeight: 1.72, color: T.TEXT2, wordBreak: 'break-word' }}>
             {isStreaming && !content ? (
               <TypingDots />
             ) : rich ? (
-              /* Rich structured response */
               <>
                 <RichResponse rich={rich} />
                 {isStreaming && <StreamingCursor />}
               </>
             ) : (
-              /* Plain markdown fallback */
               <>
                 <ReactMarkdown components={mdComponents}>{content || ''}</ReactMarkdown>
                 {isStreaming && <StreamingCursor />}
@@ -306,7 +316,7 @@ export function MessageBubble({ role, content, rich, isStreaming }) {
           </div>
         ) : (
           <p style={{
-            margin: 0, fontSize: 14, lineHeight: 1.7,
+            margin: 0, fontSize: 13, lineHeight: 1.7,
             color: T.TEXT2, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
             {content}
