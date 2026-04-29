@@ -4,6 +4,9 @@ import ReactMarkdown from 'react-markdown';
 import { Code2, Copy, ExternalLink, Check } from 'lucide-react';
 import { StreamingCursor } from './StreamingCursor';
 import { RichResponse } from './RichResponse';
+import { ThinkingPanel } from './ThinkingPanel';
+import { CitationFootnotes } from './CitationFootnote';
+import { ArtifactCards } from './ArtifactCard';
 import { T, metalBg } from '../../lib/tokens';
 
 function CFOAvatar() {
@@ -258,7 +261,7 @@ const mdComponents = {
   },
 };
 
-export function MessageBubble({ role, content, rich, isStreaming }) {
+export function MessageBubble({ role, content, rich, isStreaming, thinking, citations, artifacts }) {
   const isAssistant = role === 'assistant';
 
   return (
@@ -300,6 +303,7 @@ export function MessageBubble({ role, content, rich, isStreaming }) {
 
         {isAssistant ? (
           <div style={{ fontSize: 13, lineHeight: 1.72, color: T.TEXT2, wordBreak: 'break-word' }}>
+            <ThinkingPanel thinking={thinking} />
             {isStreaming && !content ? (
               <TypingDots />
             ) : rich ? (
@@ -313,6 +317,8 @@ export function MessageBubble({ role, content, rich, isStreaming }) {
                 {isStreaming && <StreamingCursor />}
               </>
             )}
+            <CitationFootnotes citations={citations} />
+            <ArtifactCards artifacts={artifacts} />
           </div>
         ) : (
           <p style={{

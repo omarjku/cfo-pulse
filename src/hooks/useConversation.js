@@ -83,7 +83,7 @@ export function useConversation({ onSave } = {}) {
       });
 
     const assistantId = Date.now() + 1;
-    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', rich: null }]);
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', rich: null, thinking: null, citations: null, artifacts: [] }]);
 
     const setAssistantContent = (content, rich = undefined) =>
       setMessages((prev) => prev.map((m) => {
@@ -145,8 +145,13 @@ export function useConversation({ onSave } = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: history,
+          fileIds: documents
+            .filter((d) => d.status === 'ready' && d.anthropicFileId)
+            .map((d) => d.anthropicFileId),
           documentContext,
-          pdfDocuments: [...newPdfDocs, ...pendingSummaryPdfs].map((d) => ({ data: d.base64 })),
+          pdfDocuments: [...newPdfDocs, ...pendingSummaryPdfs]
+            .filter((d) => !d.anthropicFileId)
+            .map((d) => ({ data: d.base64 })),
           documentSummaries: existingSummaries,
           imageDocuments,
         }),
@@ -188,8 +193,25 @@ export function useConversation({ onSave } = {}) {
               fullText += event.text;
               setAssistantContent(fullText);
 
+            } else if (event.type === 'thinking') {
+              setMessages((prev) => prev.map((m) =>
+                m.id === assistantId ? { ...m, thinking: event.text } : m
+              ));
+
+            } else if (event.type === 'artifact') {
+              setMessages((prev) => prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, artifacts: [...(m.artifacts || []), { url: event.url, format: event.format, title: event.title }] }
+                  : m
+              ));
+
             } else if (event.type === 'tool_start') {
-              fullText += `\n\n*Searching the web for "${event.query}"...*\n\n`;
+              const label = event.tool === 'dispatch_subagent'
+                ? `*Analyzing documents: "${event.query}"...*`
+                : event.tool === 'generate_report'
+                ? `*Generating report...*`
+                : `*Searching the web for "${event.query}"...*`;
+              fullText += `\n\n${label}\n\n`;
               setAssistantContent(fullText);
 
             } else if (event.type === 'done') {

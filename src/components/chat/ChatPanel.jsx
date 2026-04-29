@@ -96,6 +96,9 @@ export function ChatPanel({ messages, streaming, onSend }) {
               content={msg.content}
               rich={msg.rich ?? null}
               isStreaming={streaming && i === messages.length - 1 && msg.role === 'assistant'}
+              thinking={msg.thinking ?? null}
+              citations={msg.citations ?? null}
+              artifacts={msg.artifacts ?? null}
             />
           ))}
         </AnimatePresence>
