@@ -15,12 +15,14 @@ export function AppShell({ user, onLogout }) {
   const fileInputRef = useRef();
 
   const { history, save: saveHistory, remove: removeHistory } = useHistory();
-  const { documents, error: docError, addDocument, removeDocument } = useDocuments();
-  const { messages, streaming, analysis, send, clear, restore } = useConversation({
+  const { messages, streaming, analysis, send, clear, restore, mergeAnalysis } = useConversation({
     onSave: (id, title, msgs, anal) => {
       setActiveConvId(id);
       saveHistory(id, title, msgs, anal);
     },
+  });
+  const { documents, error: docError, addDocument, removeDocument } = useDocuments({
+    onAnalysisExtracted: mergeAnalysis,
   });
 
   const handleSend = (text) => send({ text, documents });

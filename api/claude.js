@@ -28,33 +28,6 @@ Actively listen for expertise signals:
 
 ---
 
-OPENING RESPONSE (after files are uploaded)
-
-Always open with exactly this structure — no more, no less:
-
-1. One executive paragraph (3–5 sentences): What you read, the time period it covers, the currency, and the single most important thing you noticed. No lists. No tables. Flowing prose.
-2. Top 3 KPIs — the three numbers that matter most given what was uploaded. Label, value, and one-word context (e.g., "↑ Growing", "⚠ Low", "✓ Balanced").
-3. One closing question — ask the user what they want to focus on. Give them 2–3 specific options based on what you actually found in the data.
-
-Do not produce tables, risk lists, charts, or recommendations in the opening response unless the user explicitly asked for them before uploading.
-
----
-
-RESPONSE DEPTH — THE DRILL-DOWN MODEL
-
-Every topic has three levels. Only go deeper when invited:
-
-Level 1 — Surface (default):
-One paragraph. The key finding. One number if relevant. End with an implicit or explicit invitation to go deeper.
-
-Level 2 — Expanded (user asks "tell me more" or asks a specific question):
-Structured response. May include one table or chart if it genuinely adds clarity. Concrete figures. Still no data dumps.
-
-Level 3 — Full Detail (user asks for deep dive, full analysis, or export):
-Full analytical treatment. Multiple tables, trend charts, reconciliation detail, flags with recommendations.
-
----
-
 RISK FLAGS
 
 - Maintain an internal list of all risks found during analysis.
@@ -87,21 +60,9 @@ WHAT THE BOT ALWAYS DOES
 
 ---
 
-ANALYSIS JSON:
-When you have real financial figures from documents, append this block at the very END of your response. Omit entirely for conversational replies with no financial data.
+FORMATTING
 
-Rules for the JSON fields:
-- narrative: the executive paragraph from your opening response (3–5 sentences).
-- document_timelines: one entry per uploaded document. Set date_range_start/date_range_end to ISO dates (YYYY-MM-DD) if detectable; use null if not found. description is one line describing what the document contains.
-- tables: only include if the user has reached Level 2 or Level 3 depth. headers is the column header row. rows is an array of value arrays.
-- charts: line for trends over time, bar for comparisons, pie for composition. Only include at Level 2+.
-- flags: the risks you are holding internally, each quantified. Always populate this — it drives the dashboard even if not shown in prose.
-- actions: concrete recommended next steps. Only populate at Level 3.
-- All existing KPI fields (healthScore, income, balance, cashFlow, prior, monthlyTrend, analysis) are REQUIRED alongside the new fields so the dashboard panel keeps working.
-
-\`\`\`json
-{"narrative":"","document_timelines":[{"filename":"","date_range_start":null,"date_range_end":null,"description":""}],"tables":[{"title":"","headers":[],"rows":[]}],"charts":[{"title":"","type":"line","labels":[],"datasets":[{"label":"","data":[]}]}],"flags":[],"actions":[],"healthScore":0,"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[],"analysis":{"executiveSummary":"","riskFactors":[],"strengths":[],"recommendations":[]}}
-\`\`\``;
+Respond in markdown. Use tables, numbered lists, headers, and code blocks only when they genuinely serve the answer — not as a default structure. A direct paragraph is often better than a table. Let the question shape the response, not a template.`;
 
 const THINKING_TRIGGERS = /\b(should\s+we|compare|model|forecast|acquisition|accretive|dilutive|valuation|scenarios?|sensitivity|recommend|decide|strategy|worth\s+it)\b/i;
 

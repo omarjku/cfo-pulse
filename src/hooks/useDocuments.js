@@ -79,7 +79,21 @@ function readSpreadsheetAsText(file) {
   });
 }
 
-export function useDocuments() {
+async function extractDashboardAnalysis(fileId, filename) {
+  try {
+    const res = await fetch('/api/analyze-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId, filename }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export function useDocuments({ onAnalysisExtracted } = {}) {
   const [documents, setDocuments] = useState([]);
   const [error, setError] = useState('');
 
@@ -145,11 +159,25 @@ export function useDocuments() {
         anthropicFileId = await uploadToFilesAPI(textB64, 'text/plain', file.name + '.txt');
       }
 
+      // For non-spreadsheet docs with a Files API ID, extract dashboard data in the background.
+      // Spreadsheets go through analysisOrchestrator instead.
+      let dashboardAnalysis = null;
+      if (anthropicFileId && !isSheet) {
+        dashboardAnalysis = await extractDashboardAnalysis(anthropicFileId, file.name);
+        if (dashboardAnalysis && onAnalysisExtracted) onAnalysisExtracted(dashboardAnalysis);
+      }
+
       let dbId = docId;
       if (supabase && !isImage) {
         const { data: doc } = await supabase
           .from('documents')
-          .insert({ name: file.name, size_bytes: file.size, file_type: ext, anthropic_file_id: anthropicFileId })
+          .insert({
+            name: file.name,
+            size_bytes: file.size,
+            file_type: ext,
+            anthropic_file_id: anthropicFileId,
+            ...(dashboardAnalysis ? { dashboard_analysis: dashboardAnalysis } : {}),
+          })
           .select('id')
           .single();
         if (doc) {

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { retrieveChunks } from './useRAG';
-import { parseRichResponse, isRich, stripJsonBlock } from '../lib/responseSchema';
+import { stripJsonBlock } from '../lib/responseSchema';
 import { runFinancialAnalysis, isSpreadsheet } from '../lib/analysisOrchestrator';
 
 const EMPTY_ANALYSIS = {
@@ -13,12 +13,6 @@ const EMPTY_ANALYSIS = {
   monthlyTrend: [],
   analysis: null,
 };
-
-function extractJsonBlock(text) {
-  const match = text.match(/```json\s*([\s\S]*?)\s*```/);
-  if (!match) return null;
-  try { return JSON.parse(match[1]); } catch { return null; }
-}
 
 function newConvId() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -83,13 +77,12 @@ export function useConversation({ onSave } = {}) {
       });
 
     const assistantId = Date.now() + 1;
-    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', rich: null, thinking: null, citations: null, artifacts: [] }]);
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', thinking: null, citations: null, artifacts: [] }]);
 
-    const setAssistantContent = (content, rich = undefined) =>
-      setMessages((prev) => prev.map((m) => {
-        if (m.id !== assistantId) return m;
-        return rich !== undefined ? { ...m, content, rich } : { ...m, content };
-      }));
+    const setAssistantContent = (content) =>
+      setMessages((prev) => prev.map((m) =>
+        m.id === assistantId ? { ...m, content } : m
+      ));
 
     newPdfDocs.forEach((d) => sentDocIdsRef.current.add(d.id));
 
@@ -105,7 +98,7 @@ export function useConversation({ onSave } = {}) {
         const rich = await runFinancialAnalysis(spreadsheetFiles);
         setAnalysis((prev) => ({ ...prev, ...rich }));
         const narrative = rich.narrative || '';
-        setAssistantContent(narrative, rich);
+        setAssistantContent(narrative);
 
         // Persist to Supabase
         let cid = supabaseConvId;
@@ -127,7 +120,7 @@ export function useConversation({ onSave } = {}) {
         }
 
         if (onSave) {
-          const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: narrative, rich }];
+          const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: narrative }];
           onSave(cid || convIdRef.current, text.slice(0, 60), finalMessages, rich);
         }
       } catch (err) {
@@ -172,7 +165,6 @@ export function useConversation({ onSave } = {}) {
       const decoder = new TextDecoder();
       let fullText = '';
       let lineBuffer = '';
-      let freshAnalysis = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -215,27 +207,7 @@ export function useConversation({ onSave } = {}) {
               setAssistantContent(fullText);
 
             } else if (event.type === 'done') {
-              const rich = parseRichResponse(fullText);
-              const stripped = stripJsonBlock(fullText);
-
-              if (isRich(rich)) {
-                // Rich response — store parsed data + strip JSON block from displayed text
-                setAnalysis((prev) => {
-                  freshAnalysis = { ...prev, ...rich };
-                  return freshAnalysis;
-                });
-                setAssistantContent(stripped, rich);
-              } else {
-                // Legacy dashboard-only or plain text
-                const json = extractJsonBlock(fullText);
-                if (json) {
-                  setAnalysis((prev) => {
-                    freshAnalysis = { ...prev, ...json };
-                    return freshAnalysis;
-                  });
-                }
-                setAssistantContent(stripped);
-              }
+              setAssistantContent(fullText);
 
             } else if (event.type === 'error') {
               let errMsg = event.message || 'Unknown error';
@@ -263,14 +235,14 @@ export function useConversation({ onSave } = {}) {
         if (cid) {
           await supabase.from('messages').insert([
             { conversation_id: cid, role: 'user', content: text },
-            { conversation_id: cid, role: 'assistant', content: stripJsonBlock(fullText) },
+            { conversation_id: cid, role: 'assistant', content: fullText },
           ]);
         }
       }
 
       if (onSave) {
-        const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: stripJsonBlock(fullText) }];
-        onSave(cid || convIdRef.current, text.slice(0, 60), finalMessages, freshAnalysis ?? analysis);
+        const finalMessages = [...messages, userMsg, { id: assistantId, role: 'assistant', content: fullText }];
+        onSave(cid || convIdRef.current, text.slice(0, 60), finalMessages, analysis);
       }
 
     } catch (err) {
@@ -302,16 +274,18 @@ export function useConversation({ onSave } = {}) {
         .eq('conversation_id', id)
         .order('created_at', { ascending: true });
       if (data) {
-        const msgs = data.map((m, i) => ({ id: i, role: m.role, content: m.content }));
-        setMessages(msgs);
-        const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
-        if (lastAssistant) {
-          const json = extractJsonBlock(lastAssistant.content);
-          setAnalysis(json ? { ...EMPTY_ANALYSIS, ...json } : EMPTY_ANALYSIS);
-        } else {
-          setAnalysis(EMPTY_ANALYSIS);
-        }
+        setMessages(data.map((m, i) => ({ id: i, role: m.role, content: m.content })));
       }
+
+      // Rehydrate dashboard from the most recent document's extracted analysis
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('dashboard_analysis')
+        .not('dashboard_analysis', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const extracted = docs?.[0]?.dashboard_analysis;
+      setAnalysis(extracted ? { ...EMPTY_ANALYSIS, ...extracted } : EMPTY_ANALYSIS);
     } else {
       setSupabaseConvId(null);
       setMessages(savedMessages || []);
@@ -319,5 +293,11 @@ export function useConversation({ onSave } = {}) {
     }
   };
 
-  return { messages, streaming, analysis, send, clear, restore };
+  const mergeAnalysis = useCallback((extracted) => {
+    if (extracted && typeof extracted === 'object') {
+      setAnalysis((prev) => ({ ...prev, ...extracted }));
+    }
+  }, []);
+
+  return { messages, streaming, analysis, send, clear, restore, mergeAnalysis };
 }

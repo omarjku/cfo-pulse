@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Code2, Copy, ExternalLink, Check } from 'lucide-react';
 import { StreamingCursor } from './StreamingCursor';
-import { RichResponse } from './RichResponse';
 import { ThinkingPanel } from './ThinkingPanel';
 import { CitationFootnotes } from './CitationFootnote';
 import { ArtifactCards } from './ArtifactCard';
@@ -261,7 +260,7 @@ const mdComponents = {
   },
 };
 
-export function MessageBubble({ role, content, rich, isStreaming, thinking, citations, artifacts }) {
+export function MessageBubble({ role, content, isStreaming, thinking, citations, artifacts }) {
   const isAssistant = role === 'assistant';
 
   return (
@@ -278,7 +277,7 @@ export function MessageBubble({ role, content, rich, isStreaming, thinking, cita
       {isAssistant ? <CFOAvatar /> : <UserAvatar />}
 
       <div style={{
-        maxWidth: rich ? '92%' : '76%',
+        maxWidth: '76%',
         ...metalBg(3),
         border: `1px solid ${T.EDGE_SEP}`,
         borderRadius: isAssistant ? '2px 10px 10px 10px' : '10px 2px 10px 10px',
@@ -306,11 +305,6 @@ export function MessageBubble({ role, content, rich, isStreaming, thinking, cita
             <ThinkingPanel thinking={thinking} />
             {isStreaming && !content ? (
               <TypingDots />
-            ) : rich ? (
-              <>
-                <RichResponse rich={rich} />
-                {isStreaming && <StreamingCursor />}
-              </>
             ) : (
               <>
                 <ReactMarkdown components={mdComponents}>{content || ''}</ReactMarkdown>
