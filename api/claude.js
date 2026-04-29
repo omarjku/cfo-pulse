@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 8192;
+const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 16000;
+const MAX_TOOL_TURNS = 10;
 
 const SYSTEM_PROMPT = `You are CFO Pulse — a financial analysis advisor built for business owners, executives, and finance professionals in the MENA region. You combine the instincts of a seasoned CFO with the clarity of a trusted advisor who knows when to speak and when to listen.
 
@@ -102,15 +103,52 @@ Rules for the JSON fields:
 {"narrative":"","document_timelines":[{"filename":"","date_range_start":null,"date_range_end":null,"description":""}],"tables":[{"title":"","headers":[],"rows":[]}],"charts":[{"title":"","type":"line","labels":[],"datasets":[{"label":"","data":[]}]}],"flags":[],"actions":[],"healthScore":0,"income":{"revenue":0,"cogs":0,"opex":0,"da":0,"interest":0,"tax":0},"balance":{"cash":0,"receivables":0,"inventory":0,"otherCurrent":0,"ppe":0,"otherLongTerm":0,"payables":0,"shortTermDebt":0,"otherCurrentLiab":0,"longTermDebt":0,"equity":0},"cashFlow":{"operating":0,"investing":0,"financing":0},"prior":{"revenue":0,"cash":0,"ebitda":0},"monthlyTrend":[],"analysis":{"executiveSummary":"","riskFactors":[],"strengths":[],"recommendations":[]}}
 \`\`\``;
 
-const webSearchTool = {
-  name: 'web_search',
-  description: 'Search the web for current financial data, market rates, industry benchmarks, or news relevant to the financial analysis.',
+const THINKING_TRIGGERS = /\b(should\s+we|compare|model|forecast|acquisition|accretive|dilutive|valuation|scenarios?|sensitivity|recommend|decide|strategy|worth\s+it)\b/i;
+
+function shouldThink(messages, docCount) {
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+  const text = typeof lastUser?.content === 'string' ? lastUser.content : '';
+  return THINKING_TRIGGERS.test(text) || docCount > 2;
+}
+
+const dispatchSubagentTool = {
+  name: 'dispatch_subagent',
+  description: 'Dispatch a focused sub-agent to analyze a specific subset of documents. Use when a task is document-heavy and can be parallelized (e.g., summarize 5 different board decks).',
   input_schema: {
     type: 'object',
     properties: {
-      query: { type: 'string', description: 'The search query' },
+      task: { type: 'string', description: 'The focused task for the sub-agent to perform' },
+      document_file_ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Anthropic file IDs of the documents this sub-agent should focus on',
+      },
     },
-    required: ['query'],
+    required: ['task', 'document_file_ids'],
+  },
+};
+
+const generateReportTool = {
+  name: 'generate_report',
+  description: 'Generate a downloadable XLSX or PDF report from financial data. Returns a download URL.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      format: { type: 'string', enum: ['xlsx', 'pdf'], description: 'Output format' },
+      title: { type: 'string', description: 'Report title' },
+      sections: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            heading: { type: 'string' },
+            rows: { type: 'array', items: { type: 'array' } },
+          },
+        },
+        description: 'Sections of tabular data to include',
+      },
+    },
+    required: ['format', 'title', 'sections'],
   },
 };
 
@@ -123,55 +161,73 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: { message: 'ANTHROPIC_API_KEY is not configured on the server. Set it in your Vercel project settings (or .env.local for local dev).' } });
+  if (!apiKey) return res.status(500).json({ error: { message: 'ANTHROPIC_API_KEY not configured.' } });
 
-  const { messages, documentContext, pdfDocuments, documentSummaries, imageDocuments } = req.body;
+  const { messages, fileIds = [], documentContext, pdfDocuments, documentSummaries, imageDocuments } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
   const anthropic = new Anthropic({ apiKey });
 
-  // Build Claude message array — inject document context as first synthetic turn
+  // SSE setup
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    if (typeof res.flush === 'function') res.flush();
+  };
+
+  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+  const baseUrl = `${protocol}://${host}`;
+
+  // Build document context for Claude
   const claudeMessages = [];
-  const hasContext =
-    (pdfDocuments?.length > 0) ||
-    (imageDocuments?.length > 0) ||
-    (documentSummaries?.length > 0) ||
-    documentContext;
+  const totalDocCount = (fileIds?.length || 0) + (pdfDocuments?.length || 0);
+  const hasContext = totalDocCount > 0 || imageDocuments?.length > 0 || documentSummaries?.length > 0 || documentContext;
 
   if (hasContext) {
     const contextContent = [];
 
-    // Raw PDFs (only sent on first appearance per doc — enforced client-side)
-    if (pdfDocuments?.length > 0) {
-      for (const pdf of pdfDocuments) {
-        contextContent.push({
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: pdf.data },
-          cache_control: { type: 'ephemeral' },
-        });
-      }
-    }
-
-    // Images (PNG, JPG, JPEG, WEBP, GIF) sent as image content blocks
-    if (imageDocuments?.length > 0) {
-      for (const img of imageDocuments) {
-        contextContent.push({
-          type: 'image',
-          source: { type: 'base64', media_type: img.mimeType, data: img.data },
-        });
-      }
-    }
-
-    // Condensed fact-sheet summaries for documents already analyzed (cheap follow-up context)
-    if (documentSummaries?.length > 0) {
+    // Files API documents (preferred — reuses uploaded file, no per-turn token cost)
+    for (const fileId of (fileIds || [])) {
       contextContent.push({
-        type: 'text',
-        text: `DOCUMENT FACT SHEETS (condensed from uploaded files):\n\n${documentSummaries.join('\n\n---\n\n')}`,
+        type: 'document',
+        source: { type: 'file', file_id: fileId },
+        citations: { enabled: true },
         cache_control: { type: 'ephemeral' },
       });
     }
 
-    // RAG chunks from full-text search
+    // Fallback: raw base64 PDFs for docs not yet in Files API
+    for (const pdf of (pdfDocuments || [])) {
+      contextContent.push({
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: pdf.data },
+        citations: { enabled: true },
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+
+    // Images
+    for (const img of (imageDocuments || [])) {
+      contextContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mimeType, data: img.data },
+      });
+    }
+
+    if (documentSummaries?.length > 0) {
+      contextContent.push({
+        type: 'text',
+        text: `DOCUMENT FACT SHEETS:\n\n${documentSummaries.join('\n\n---\n\n')}`,
+        cache_control: { type: 'ephemeral' },
+      });
+    }
+
     if (documentContext) {
       contextContent.push({
         type: 'text',
@@ -187,79 +243,127 @@ export default async function handler(req, res) {
 
   claudeMessages.push(...messages);
 
-  // SSE setup — flushHeaders() starts streaming immediately on Vercel
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
+  const useThinking = shouldThink(messages, totalDocCount);
 
-  const sendEvent = (data) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-    if (typeof res.flush === 'function') res.flush();
-  };
-
-  // Build base URL for internal API calls — use forwarded headers for Vercel
-  const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
-  const baseUrl = `${protocol}://${host}`;
+  const tools = [
+    { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+    { type: 'code_execution_20250825', name: 'code_execution' },
+    { type: 'memory_20250818', name: 'memory' },
+    dispatchSubagentTool,
+    generateReportTool,
+  ];
 
   try {
     let continueLoop = true;
     let loopMessages = [...claudeMessages];
     let toolUseBlock = null;
+    let toolTurns = 0;
 
-    while (continueLoop) {
-      const stream = anthropic.messages.stream({
+    while (continueLoop && toolTurns < MAX_TOOL_TURNS) {
+      const streamParams = {
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
         messages: loopMessages,
-        tools: [webSearchTool],
-      });
+        tools,
+      };
+
+      if (useThinking) {
+        streamParams.thinking = { type: 'enabled', budget_tokens: 16000 };
+      }
+
+      const stream = anthropic.messages.stream(streamParams);
 
       let inputJson = '';
       let currentToolUse = null;
       let stopReason = null;
+      let thinkingBuffer = '';
+      let inThinking = false;
 
       for await (const event of stream) {
-        if (event.type === 'content_block_delta') {
-          if (event.delta.type === 'text_delta') {
+        if (event.type === 'content_block_start') {
+          if (event.content_block.type === 'thinking') {
+            inThinking = true;
+            thinkingBuffer = '';
+          } else if (event.content_block.type === 'tool_use') {
+            inThinking = false;
+            currentToolUse = { id: event.content_block.id, name: event.content_block.name };
+            inputJson = '';
+          } else {
+            inThinking = false;
+          }
+        } else if (event.type === 'content_block_delta') {
+          if (event.delta.type === 'thinking_delta') {
+            thinkingBuffer += event.delta.thinking;
+          } else if (event.delta.type === 'text_delta') {
             sendEvent({ type: 'text', text: event.delta.text });
           } else if (event.delta.type === 'input_json_delta') {
             inputJson += event.delta.partial_json;
           }
-        } else if (event.type === 'content_block_start') {
-          if (event.content_block.type === 'tool_use') {
-            currentToolUse = { id: event.content_block.id, name: event.content_block.name };
-            inputJson = '';
+        } else if (event.type === 'content_block_stop') {
+          if (inThinking && thinkingBuffer) {
+            sendEvent({ type: 'thinking', text: thinkingBuffer });
+            thinkingBuffer = '';
+            inThinking = false;
           }
-        } else if (event.type === 'content_block_stop' && currentToolUse) {
-          toolUseBlock = { ...currentToolUse, input: JSON.parse(inputJson || '{}') };
-          currentToolUse = null;
+          if (currentToolUse) {
+            toolUseBlock = { ...currentToolUse, input: JSON.parse(inputJson || '{}') };
+            currentToolUse = null;
+          }
         } else if (event.type === 'message_delta') {
-          // Capture stop_reason here — message_stop event doesn't carry it
           stopReason = event.delta?.stop_reason;
         } else if (event.type === 'message_stop') {
           if (stopReason === 'tool_use' && toolUseBlock) {
-            sendEvent({ type: 'tool_start', tool: toolUseBlock.name, query: toolUseBlock.input.query });
+            toolTurns++;
+            sendEvent({
+              type: 'tool_start',
+              tool: toolUseBlock.name,
+              query: toolUseBlock.input?.query || toolUseBlock.input?.task || '',
+            });
 
             let toolResult = '';
-            try {
-              const searchRes = await fetch(`${baseUrl}/api/search`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: toolUseBlock.input.query }),
-              });
-              const searchData = await searchRes.json();
-              toolResult = searchData.results
-                .map((r) => `${r.title}\n${r.url}\n${r.content}`)
-                .join('\n\n---\n\n');
-            } catch {
-              toolResult = 'Search unavailable.';
-            }
 
-            // Append tool exchange and re-enter loop
+            if (toolUseBlock.name === 'dispatch_subagent') {
+              try {
+                const subRes = await fetch(`${baseUrl}/api/subagent`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    task: toolUseBlock.input.task,
+                    document_file_ids: toolUseBlock.input.document_file_ids,
+                  }),
+                });
+                const subData = await subRes.json();
+                toolResult = subData.result || 'Sub-agent returned no result.';
+              } catch {
+                toolResult = 'Sub-agent dispatch failed.';
+              }
+            } else if (toolUseBlock.name === 'generate_report') {
+              try {
+                const reportRes = await fetch(`${baseUrl}/api/generate-report`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(toolUseBlock.input),
+                });
+                const reportData = await reportRes.json();
+                if (reportData.url) {
+                  sendEvent({
+                    type: 'artifact',
+                    url: reportData.url,
+                    format: toolUseBlock.input.format,
+                    title: toolUseBlock.input.title,
+                  });
+                  toolResult = `Report generated. Download URL: ${reportData.url}`;
+                } else {
+                  toolResult = reportData.error || 'Report generation failed.';
+                }
+              } catch {
+                toolResult = 'Report generation failed.';
+              }
+            }
+            // Hosted tools (web_search, code_execution, memory) resolve server-side;
+            // if they somehow surface here, pass empty result to unblock loop.
+
             loopMessages = [
               ...loopMessages,
               {
@@ -272,8 +376,12 @@ export default async function handler(req, res) {
               },
             ];
             toolUseBlock = null;
+
           } else {
             continueLoop = false;
+            if (toolTurns >= MAX_TOOL_TURNS) {
+              sendEvent({ type: 'text', text: '\n\n*Analysis stopped after maximum tool iterations.*' });
+            }
             sendEvent({ type: 'done' });
           }
         }

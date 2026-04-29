@@ -33,6 +33,20 @@ function readAsText(file) {
   });
 }
 
+async function uploadToFilesAPI(base64, mimeType, fileName) {
+  try {
+    const res = await fetch('/api/files-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64, mimeType, fileName }),
+    });
+    const data = await res.json();
+    return data.file_id || null;
+  } catch {
+    return null;
+  }
+}
+
 function readAsArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -122,11 +136,20 @@ export function useDocuments() {
         text = (await readAsText(file)).slice(0, 50000);
       }
 
+      // Upload to Anthropic Files API for reuse across turns (silent fallback on failure)
+      let anthropicFileId = null;
+      if (isPDF && base64) {
+        anthropicFileId = await uploadToFilesAPI(base64, 'application/pdf', file.name);
+      } else if (isSheet && text) {
+        const textB64 = btoa(unescape(encodeURIComponent(text)));
+        anthropicFileId = await uploadToFilesAPI(textB64, 'text/plain', file.name + '.txt');
+      }
+
       let dbId = docId;
       if (supabase && !isImage) {
         const { data: doc } = await supabase
           .from('documents')
-          .insert({ name: file.name, size_bytes: file.size, file_type: ext })
+          .insert({ name: file.name, size_bytes: file.size, file_type: ext, anthropic_file_id: anthropicFileId })
           .select('id')
           .single();
         if (doc) {
@@ -143,6 +166,7 @@ export function useDocuments() {
       setDocuments((prev) =>
         prev.map((d) => d.id === docId ? {
           ...d, id: dbId, base64, mimeType, text, status: 'ready',
+          anthropicFileId,
           // Keep raw File reference for spreadsheets so analysisOrchestrator can call arrayBuffer()
           ...(isSheet ? { _file: file } : {}),
         } : d)
