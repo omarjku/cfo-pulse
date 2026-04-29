@@ -6,7 +6,6 @@
   "framework": "vite",
   "functions": {
     "api/claude.js": { "maxDuration": 60 },
-    "api/search.js": { "maxDuration": 15 },
     "api/summarize.js": { "maxDuration": 45 },
     "api/extract-pdf.js": { "maxDuration": 30 }
   },
