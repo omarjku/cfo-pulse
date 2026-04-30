@@ -98,6 +98,7 @@ export function ChatPanel({ messages, streaming, onSend }) {
               thinking={msg.thinking ?? null}
               citations={msg.citations ?? null}
               artifacts={msg.artifacts ?? null}
+              toolStatus={msg.toolStatus ?? null}
             />
           ))}
         </AnimatePresence>

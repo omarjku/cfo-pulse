@@ -199,14 +199,20 @@ export function useConversation({ onSave } = {}) {
 
             } else if (event.type === 'tool_start') {
               const label = event.tool === 'dispatch_subagent'
-                ? `*Analyzing documents: "${event.query}"...*`
+                ? `Analyzing documents…`
                 : event.tool === 'generate_report'
-                ? `*Generating report...*`
-                : `*Searching the web for "${event.query}"...*`;
-              fullText += `\n\n${label}\n\n`;
-              setAssistantContent(fullText);
+                ? `Generating report…`
+                : event.tool === 'code_execution_20250825'
+                ? `Running calculation…`
+                : `Searching the web…`;
+              setMessages((prev) => prev.map((m) =>
+                m.id === assistantId ? { ...m, toolStatus: label } : m
+              ));
 
             } else if (event.type === 'done') {
+              setMessages((prev) => prev.map((m) =>
+                m.id === assistantId ? { ...m, toolStatus: null } : m
+              ));
               setAssistantContent(fullText);
 
             } else if (event.type === 'error') {

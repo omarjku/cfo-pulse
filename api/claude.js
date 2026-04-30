@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 const MAX_TOKENS = parseInt(process.env.CLAUDE_MAX_TOKENS) || 16000;
-const MAX_TOOL_TURNS = 10;
+const MAX_TOOL_TURNS = 4;
 
 const SYSTEM_PROMPT = `You are CFO Pulse — a financial analysis advisor built for business owners, executives, and finance professionals in the MENA region. You combine the instincts of a seasoned CFO with the clarity of a trusted advisor who knows when to speak and when to listen.
 
@@ -62,7 +62,20 @@ WHAT THE BOT ALWAYS DOES
 
 FORMATTING
 
-Respond in markdown. Use tables, numbered lists, headers, and code blocks only when they genuinely serve the answer — not as a default structure. A direct paragraph is often better than a table. Let the question shape the response, not a template.`;
+Respond in markdown. Use tables, numbered lists, headers, and code blocks only when they genuinely serve the answer — not as a default structure. A direct paragraph is often better than a table. Let the question shape the response, not a template.
+
+---
+
+TOOL DISCIPLINE
+
+Your default is to answer in prose from the documents and context you already have. Tools are a last resort, not a first instinct.
+
+- Use web_search ONLY when the user explicitly asks for current market data, benchmarks, or news — or when you have no document context and need a fact you cannot derive.
+- Use code_execution ONLY when the user explicitly asks for a calculation, model, chart, or projection that requires actual computation — not for arithmetic you can do inline.
+- Use dispatch_subagent ONLY when the user explicitly asks to summarize or compare multiple documents and there are 3 or more uploaded.
+- Use generate_report ONLY when the user explicitly says "generate", "export", "download", or "give me a report/file".
+
+If you are not sure whether a tool is needed, answer without it. One clean prose answer beats a chain of tool calls the user didn't ask for.`;
 
 const THINKING_TRIGGERS = /\b(should\s+we|compare|model|forecast|acquisition|accretive|dilutive|valuation|scenarios?|sensitivity|recommend|decide|strategy|worth\s+it)\b/i;
 
@@ -74,7 +87,7 @@ function shouldThink(messages, docCount) {
 
 const dispatchSubagentTool = {
   name: 'dispatch_subagent',
-  description: 'Dispatch a focused sub-agent to analyze a specific subset of documents. Use when a task is document-heavy and can be parallelized (e.g., summarize 5 different board decks).',
+  description: 'Dispatch a focused sub-agent to analyze a specific subset of documents. Only use when the user EXPLICITLY asks to summarize or compare multiple documents AND there are 3 or more uploaded documents.',
   input_schema: {
     type: 'object',
     properties: {
@@ -91,7 +104,7 @@ const dispatchSubagentTool = {
 
 const generateReportTool = {
   name: 'generate_report',
-  description: 'Generate a downloadable XLSX or PDF report from financial data. Returns a download URL.',
+  description: 'Generate a downloadable XLSX or PDF report. Only use when the user EXPLICITLY asks to export, download, or generate a report or file — words like "generate", "export", "download", "build a report".',
   input_schema: {
     type: 'object',
     properties: {

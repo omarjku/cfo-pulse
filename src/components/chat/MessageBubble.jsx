@@ -260,7 +260,7 @@ const mdComponents = {
   },
 };
 
-export function MessageBubble({ role, content, isStreaming, thinking, citations, artifacts }) {
+export function MessageBubble({ role, content, isStreaming, thinking, citations, artifacts, toolStatus }) {
   const isAssistant = role === 'assistant';
 
   return (
@@ -303,6 +303,19 @@ export function MessageBubble({ role, content, isStreaming, thinking, citations,
         {isAssistant ? (
           <div style={{ fontSize: 13, lineHeight: 1.72, color: T.TEXT2, wordBreak: 'break-word' }}>
             <ThinkingPanel thinking={thinking} />
+            {toolStatus && (
+              <div style={{
+                fontSize: 11, color: T.TEXT3, marginBottom: 8,
+                fontFamily: "'Barlow Condensed', sans-serif",
+                letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%', background: T.AMBER,
+                  animation: 'cfoBounce 0.9s ease-in-out infinite',
+                }} />
+                {toolStatus}
+              </div>
+            )}
             {isStreaming && !content ? (
               <TypingDots />
             ) : (
