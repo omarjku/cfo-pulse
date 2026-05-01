@@ -57,11 +57,14 @@ function readAsArrayBuffer(file) {
 }
 
 function readSpreadsheetAsText(file) {
+  const isCsv = file.name.toLowerCase().endsWith('.csv');
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const wb = isCsv
+          ? XLSX.read(e.target.result, { type: 'string' })
+          : XLSX.read(e.target.result, { type: 'binary' });
         let text = '';
         for (const name of wb.SheetNames) {
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
@@ -72,10 +75,11 @@ function readSpreadsheetAsText(file) {
           text += '\n';
         }
         resolve(text.slice(0, 50000));
-      } catch (err) { reject(err); }
+      } catch (err) { reject(err instanceof Error ? err : new Error(String(err))); }
     };
     reader.onerror = reject;
-    reader.readAsBinaryString(file);
+    if (isCsv) reader.readAsText(file);
+    else reader.readAsBinaryString(file);
   });
 }
 
